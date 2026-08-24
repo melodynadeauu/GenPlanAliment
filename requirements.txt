@@ -1,0 +1,7 @@
+requests
+python-dotenv
+google-generativeai
+groq
+langgraph
+langchain-core
+streamlit
