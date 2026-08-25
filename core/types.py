@@ -20,3 +20,11 @@ class Intensity(str, Enum):
     LOW = "low"
     MODERATE = "moderate"
     HIGH = "high"
+
+
+class Goal(str, Enum):
+    """The user's nutrition objective."""
+
+    WEIGHT_LOSS = "weight_loss"
+    MAINTENANCE = "maintenance"
+    WEIGHT_GAIN = "weight_gain"

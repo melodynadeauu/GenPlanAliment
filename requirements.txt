@@ -5,3 +5,4 @@ groq
 langgraph
 langchain-core
 streamlit
+pytest
