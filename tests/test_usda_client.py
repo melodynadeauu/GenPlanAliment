@@ -1,4 +1,6 @@
-"""Tests for data.usda.client. All requests.get calls are faked -- no real network."""
+"""Tests for data.usda.client happy paths and caching. All requests.get calls are faked."""
+import dataclasses
+
 import pytest
 
 from data.usda import cache as usda_cache
@@ -12,21 +14,32 @@ def isolated_cache_path(tmp_path, monkeypatch):
 
 
 class FakeResponse:
-    def __init__(self, json_data):
+    def __init__(self, json_data=None, status_code=200, headers=None):
         self._json_data = json_data
+        self.status_code = status_code
+        self.headers = headers or {}
 
     def json(self):
         return self._json_data
 
 
-def make_fake_get(json_data, calls):
+def make_fake_get(json_data, calls, status_code=200):
     """Return a fake requests.get that records each call and replays `json_data`."""
 
     def fake_get(url, params=None, timeout=None):
         calls.append({"url": url, "params": params, "timeout": timeout})
-        return FakeResponse(json_data)
+        return FakeResponse(json_data, status_code=status_code)
 
     return fake_get
+
+
+# --- FoodLookupResult ---
+
+
+def test_food_lookup_result_is_frozen():
+    result = usda_client.FoodLookupResult(food={"a": 1}, error=None)
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        result.error = "not_found"
 
 
 # --- search_food ---
@@ -44,7 +57,8 @@ def test_search_food_returns_results_and_caches_them(monkeypatch):
 
     result = usda_client.search_food("apple", "FAKE_KEY")
 
-    assert result == [
+    assert result.error is None
+    assert result.food == [
         {"fdc_id": 123456, "description": "Apple, raw"},
         {"fdc_id": 789012, "description": "Apple juice"},
     ]
@@ -54,16 +68,16 @@ def test_search_food_returns_results_and_caches_them(monkeypatch):
     assert calls[0]["timeout"] == 5
 
     cache = usda_cache.load_cache()
-    assert usda_cache.get_cached_search(cache, "apple") == result
+    assert usda_cache.get_cached_search(cache, "apple") == result.food
 
 
-def test_search_food_returns_none_when_no_results(monkeypatch):
+def test_search_food_returns_not_found_when_no_results(monkeypatch):
     calls = []
     monkeypatch.setattr(usda_client.requests, "get", make_fake_get({"foods": []}, calls))
 
     result = usda_client.search_food("zzz_nonexistent", "FAKE_KEY")
 
-    assert result is None
+    assert result == usda_client.FoodLookupResult(None, "not_found")
 
 
 def test_search_food_uses_cache_on_second_call(monkeypatch):
@@ -75,6 +89,17 @@ def test_search_food_uses_cache_on_second_call(monkeypatch):
     usda_client.search_food("  Apple  ", "FAKE_KEY")
 
     assert len(calls) == 1
+
+
+def test_search_food_caches_not_found_so_second_call_skips_network(monkeypatch):
+    calls = []
+    monkeypatch.setattr(usda_client.requests, "get", make_fake_get({"foods": []}, calls))
+
+    usda_client.search_food("zzz_nonexistent", "FAKE_KEY")
+    result = usda_client.search_food("zzz_nonexistent", "FAKE_KEY")
+
+    assert len(calls) == 1
+    assert result == usda_client.FoodLookupResult(None, "not_found")
 
 
 # --- get_nutrition ---
@@ -111,19 +136,20 @@ def test_get_nutrition_returns_and_caches_fdc_id_description_and_full_food_nutri
 
     result = usda_client.get_nutrition("534358", "FAKE_KEY")
 
-    expected = {
+    expected_food = {
         "fdc_id": 534358,
         "description": "NUT 'N BERRY MIX",
         "foodNutrients": FOOD_DETAIL_EXAMPLE["foodNutrients"],
     }
-    assert result == expected
+    assert result.error is None
+    assert result.food == expected_food
     assert len(calls) == 1
     assert calls[0]["url"] == "https://api.nal.usda.gov/fdc/v1/food/534358"
     assert calls[0]["params"] == {"api_key": "FAKE_KEY"}
     assert calls[0]["timeout"] == 5
 
     cache = usda_cache.load_cache()
-    assert usda_cache.get_cached_nutrition(cache, "534358") == expected
+    assert usda_cache.get_cached_nutrition(cache, "534358") == expected_food
 
 
 def test_get_nutrition_uses_cache_on_second_call(monkeypatch):
@@ -136,7 +162,7 @@ def test_get_nutrition_uses_cache_on_second_call(monkeypatch):
     assert len(calls) == 1
 
 
-def test_get_nutrition_returns_none_when_no_nutrients(monkeypatch):
+def test_get_nutrition_returns_not_found_when_no_nutrients(monkeypatch):
     calls = []
     monkeypatch.setattr(
         usda_client.requests,
@@ -146,4 +172,4 @@ def test_get_nutrition_returns_none_when_no_nutrients(monkeypatch):
 
     result = usda_client.get_nutrition("1", "FAKE_KEY")
 
-    assert result is None
+    assert result == usda_client.FoodLookupResult(None, "not_found")
