@@ -12,3 +12,11 @@ class Weekday(str, Enum):
     FRIDAY = "friday"
     SATURDAY = "saturday"
     SUNDAY = "sunday"
+
+
+class Intensity(str, Enum):
+    """Perceived intensity level of an activity."""
+
+    LOW = "low"
+    MODERATE = "moderate"
+    HIGH = "high"

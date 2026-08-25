@@ -7,17 +7,17 @@ the initial rows, and only if the table is empty.
 Usage (from the project root):
     python -m data.activity.seed_activity_calendar
 """
-from core.types import Weekday
+from core.types import Intensity, Weekday
 from .store import DB_PATH, connect
 
 ACTIVITY_WEEK = [
-    (Weekday.MONDAY.value, "upper body strength training", 60, 7),
-    (Weekday.TUESDAY.value, "walk", 30, 3),
-    (Weekday.WEDNESDAY.value, "lower body strength training", 60, 7),
-    (Weekday.THURSDAY.value, "stretching", 15, 1),
-    (Weekday.FRIDAY.value, "running", 45, 9),
-    (Weekday.SATURDAY.value, "soccer", 90, 8),
-    (Weekday.SUNDAY.value, "bike ride", 40, 3),
+    (Weekday.MONDAY.value, "upper body strength training", 60, Intensity.MODERATE.value),
+    (Weekday.TUESDAY.value, "walk", 30, Intensity.MODERATE.value),
+    (Weekday.WEDNESDAY.value, "lower body strength training", 60, Intensity.MODERATE.value),
+    (Weekday.THURSDAY.value, "stretching", 15, Intensity.LOW.value),
+    (Weekday.FRIDAY.value, "running", 45, Intensity.HIGH.value),
+    (Weekday.SATURDAY.value, "soccer", 90, Intensity.HIGH.value),
+    (Weekday.SUNDAY.value, "bike ride", 40, Intensity.LOW.value),
 ]
 
 

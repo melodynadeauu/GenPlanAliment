@@ -2,11 +2,12 @@
 import sqlite3
 from pathlib import Path
 
-from core.types import Weekday
+from core.types import Intensity, Weekday
 
 DB_PATH = Path(__file__).resolve().parent / "meal_prep.db"
 
 _DAY_VALUES = ", ".join(f"'{day.value}'" for day in Weekday)
+_INTENSITY_VALUES = ", ".join(f"'{level.value}'" for level in Intensity)
 
 _SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS activity_calendar (
@@ -14,7 +15,7 @@ CREATE TABLE IF NOT EXISTS activity_calendar (
     day TEXT NOT NULL CHECK (day IN ({_DAY_VALUES})),
     activity TEXT NOT NULL,
     duration_minutes INTEGER NOT NULL CHECK (duration_minutes > 0),
-    intensity INTEGER NOT NULL CHECK (intensity BETWEEN 1 AND 10)
+    intensity TEXT NOT NULL CHECK (intensity IN ({_INTENSITY_VALUES}))
 );
 """
 
