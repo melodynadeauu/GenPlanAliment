@@ -1,0 +1,23 @@
+{
+  "likes": [
+    "chicken",
+    "salmon",
+    "eggs",
+    "brown rice",
+    "quinoa",
+    "broccoli",
+    "spinach",
+    "sweet potato",
+    "avocado",
+    "greek yogurt",
+    "almonds",
+    "peanut butter"
+  ],
+  "dislikes": [
+    "brussels sprouts",
+    "olives",
+    "mushrooms",
+    "tofu",
+    "beets"
+  ]
+}
