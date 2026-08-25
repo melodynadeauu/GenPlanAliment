@@ -3,5 +3,5 @@ venv/
 __pycache__/
 *.pyc
 meal_prep.db
-cache.json
+usda_cache.json
 .streamlit/
