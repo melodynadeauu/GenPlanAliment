@@ -24,8 +24,16 @@ SEDENTARY_ACTIVITY_FACTOR = 1.2
 KCAL_PER_MINUTE_MET_COEF = 3.5
 KCAL_PER_MINUTE_DIVISOR = 200.0
 
-# Deliberately NOT defined here: the classic sedentary/light/moderate/active
-# activity-level multipliers (1.375 / 1.55 / 1.725) used by generic TDEE
-# calculators. They describe a weekly average and would make the per-day
-# activity_calendar table pointless - this app computes exercise expenditure
-# per scheduled activity instead.
+# Daily calorie target = TDEE + the adjustment for the user's goal. Each
+# value is a single number, kept here so it can be found and changed alone.
+#
+# WEIGHT_LOSS: fixed daily deficit. Source (Mayo Clinic):
+# https://www.mayoclinic.org/healthy-lifestyle/weight-loss/in-depth/calories/art-20048065
+WEIGHT_LOSS_DEFICIT_KCAL = 500.0
+
+# MAINTENANCE: no adjustment - the target is the TDEE itself.
+MAINTENANCE_ADJUSTMENT_KCAL = 0.0
+
+# MUSCLE_GAIN: fixed daily surplus. Source (Built With Science):
+# https://builtwithscience.com/tdee-calculator/
+MUSCLE_GAIN_SURPLUS_KCAL = 300.0

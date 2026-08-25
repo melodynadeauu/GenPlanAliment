@@ -27,4 +27,4 @@ class Goal(str, Enum):
 
     WEIGHT_LOSS = "weight_loss"
     MAINTENANCE = "maintenance"
-    WEIGHT_GAIN = "weight_gain"
+    MUSCLE_GAIN = "muscle_gain"
