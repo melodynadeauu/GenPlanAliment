@@ -13,6 +13,7 @@ class PlanFood(BaseModel):
         description=(
             "The actual portion consumed, in grams. Independent of the 100g scale that "
             "core.tools.usda_tool.get_nutrition_tool's macros_per_100g is expressed in -- "
+            "not itself a unit to convert, it's the multiplier applied to that per-100g figure."
         )
     )
 
