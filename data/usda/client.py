@@ -1,9 +1,11 @@
 """USDA FoodData Central client: search + nutrition, backed by the local cache."""
 import json
+import os
 import time
 from dataclasses import dataclass
 
 import requests
+from dotenv import load_dotenv
 
 from data.usda.cache import (
     get_cached_nutrition,
@@ -16,6 +18,20 @@ from data.usda.cache import (
 SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
 FOOD_URL = "https://api.nal.usda.gov/fdc/v1/food"
 TIMEOUT_SECONDS = 5
+
+
+def _require_api_key(value: str | None) -> str:
+    """Raise a clear error if `value` is missing/empty; otherwise return it as-is."""
+    if not value:
+        raise RuntimeError(
+            "USDA_API_KEY is absent or empty. Define it in a .env file at the root of the project "
+            "(see .env.example)."
+        )
+    return value
+
+
+load_dotenv()
+USDA_API_KEY = _require_api_key(os.getenv("USDA_API_KEY"))
 
 
 # 3 tentatives max = 1 initial attempt + MAX_RETRIES retries. Each list has one delay per retry.
