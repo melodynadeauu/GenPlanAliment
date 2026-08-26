@@ -12,7 +12,7 @@ def compute_target_kcal(tdee_kcal: float, goal: Goal) -> float:
 
     MAINTENANCE / MUSCLE_GAIN: TDEE + the fixed adjustment for `goal`.
 
-    WEIGHT_LOSS (G1, Dossier de défense section 05): deficit capped at
+    WEIGHT_LOSS (G1): deficit capped at
     min(WEIGHT_LOSS_DEFICIT_KCAL, MAX_DEFICIT_FRACTION_OF_TDEE * tdee_kcal), then the
     resulting target is floored at CALORIE_FLOOR_KCAL -- the floor always wins even if
     the capped deficit would still push the target below it.

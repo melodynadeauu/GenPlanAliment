@@ -1,10 +1,7 @@
-"""Groq provider adapter: a LangChain ChatGroq instance plus the one bit core.agent.graph
-needs to translate this SDK's own failures into the canonical error codes
-GenerationResult can carry -- retry/backoff itself now lives once, provider-agnostically,
-in core.agent.graph._invoke_with_retry.
-
-Secondary provider (Decisions.docx: "Ajouter llm secondaire au cas où"), not the actively
-used path -- Gemini is primary.
+"""Groq provider adapter: a LangChain ChatGroq instance plus the bit core.agent.graph
+needs to translate this SDK's failures into the canonical error codes
+GenerationResult carries. Secondary provider -- Gemini is primary, this is the
+rate-limit fallback.
 """
 import os
 
@@ -13,18 +10,16 @@ from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from pydantic import SecretStr
 
-# Verified live against this account on 2026-08-25: llama-3.3-70b-versatile no longer
-# exists on this account; openai/gpt-oss-120b is the closest available equivalent with
-# confirmed tool-calling support.
+# llama-3.3-70b-versatile no longer exists on this account; this is the closest
+# available equivalent with confirmed tool-calling support.
 GROQ_MODEL = "openai/gpt-oss-120b"
 
 
 def classify_exception(exc: Exception) -> str | None:
     """Return "rate_limited"/"timeout" for a failure core.agent.graph should retry,
-    "invalid_output" for one it should report immediately without retrying, or None to
-    let it propagate as "api_error". Verified live: a forced tool_choice the model
-    doesn't honor surfaces as groq.BadRequestError with
-    body["error"]["code"] == "tool_use_failed".
+    "invalid_output" for one to report immediately without retrying, or None to let
+    it propagate as "api_error". A forced tool_choice the model refuses surfaces as
+    groq.BadRequestError with body["error"]["code"] == "tool_use_failed".
     """
     if isinstance(exc, groq.BadRequestError):
         if isinstance(exc.body, dict) and exc.body.get("error", {}).get("code") == "tool_use_failed":

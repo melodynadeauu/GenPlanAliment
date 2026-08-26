@@ -1,12 +1,10 @@
-"""LangGraph orchestration: the 5/6-node machine the Dossier de défense's architecture
-diagram describes (section 04). load_context is a pass-through documenting the input
-boundary (Profile/ActivityEntry already validate on construction); agent/tools/
+"""LangGraph orchestration: the node graph described in docs/architecture.md.
+load_context is a pass-through documenting the input boundary; agent/tools/
 collect_proposal is the tool-calling loop that gets an LLM to call submit_plan;
 resolve_recompute re-derives totals from get_nutrition_tool so no LLM number reaches
 the user (G3); validate_guardrails enforces G1 (target conformity) and G2 (disliked
-foods) in Python, looping back to `agent` with the violation reason appended to the
-conversation, capped at MAX_ATTEMPTS -- exhausting it goes to `degrade` instead of
-ever showing a silently-non-conforming plan (G7).
+foods), looping back to `agent` with the violation reason, capped at MAX_ATTEMPTS --
+exhausting it goes to `degrade` instead of showing a silently non-conforming plan (G7).
 """
 import json
 import time
@@ -25,23 +23,18 @@ from core.agent.schemas import PlanFood, PlanPropose
 from core.tools.usda_tool import get_nutrition_tool
 
 SUBMIT_PLAN_TOOL_NAME = "submit_plan"
-# Sized for Groq's openai/gpt-oss-120b, which calls exactly one tool per turn (search then
-# lookup, one food at a time) -- unlike Gemini, which batches many tool calls into a single
-# turn and typically finishes in 1. A lower budget starves the one-tool-per-turn pattern
-# before it's done gathering data, so the forced final turn errors instead of ever reaching
-# submit_plan (verified live against Groq on 2026-08-25).
+# Sized for Groq, which calls exactly one tool per turn (search then lookup) unlike
+# Gemini, which batches many calls into one turn -- a lower budget would starve Groq
+# before it finishes gathering data.
 MAX_AUTO_TURNS = 15
 RETRY_DELAYS_SECONDS = [1, 2]
 MAX_RETRIES = 2
-# G7: max 2 *guardrail-violation* retries (distinct from MAX_RETRIES above, which caps
-# transient LLM-call retries within one attempt). In dur, not LLM-configurable. Shares
-# the "turn" budget across attempts rather than resetting it per attempt -- MAX_AUTO_TURNS
-# is generous enough (15) that this is a non-issue for a plan-sized number of foods.
+# G7: max guardrail-violation retries (distinct from MAX_RETRIES, which caps transient
+# LLM-call retries within one attempt). Hardcoded, not LLM-configurable.
 MAX_ATTEMPTS = 2
-# G1: a plan more than this fraction away from target_kcal is a guardrail violation, not
-# merely imprecise -- the prompt already asks the LLM for +-10%, this is the deterministic
-# check that actually enforces it. A target_kcal of 0 (falsy) skips this check entirely --
-# used by tests that don't care about calorie conformity.
+# G1: a plan more than this fraction off target_kcal is a violation, not just
+# imprecise. A target_kcal of 0 skips the check -- used by tests that don't care
+# about calorie conformity.
 TARGET_TOLERANCE_FRACTION = 0.10
 
 

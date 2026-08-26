@@ -32,6 +32,6 @@ def render_guardrails_bar(plan: dict | None) -> None:
 
     st.markdown(
         "---\n"
-        "**Avertissement :** Ceci n'est pas un avis médical. "
-        "Consultez un professionnel de la santé avant de modifier votre régime alimentaire."
+        "**Disclaimer:** This is not medical advice. "
+        "Consult a healthcare professional before changing your diet."
     )

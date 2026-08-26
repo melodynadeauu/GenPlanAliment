@@ -1,16 +1,10 @@
-"""Turns a flat PlanPropose (core.agent.schemas) into the meals-grouped, kcal-enriched
-dict ui.components.meal_plan / totals_row / guardrails_bar expect (see
+"""Turns a flat PlanPropose into the meals-grouped, kcal-enriched dict
+ui.components.meal_plan / totals_row / guardrails_bar expect (see
 fixtures.demo_plan.DEMO_PLAN for the target shape).
 
-PlanFood only carries description/fdc_id/meal/grams -- no kcal or macros, since trusting
-the LLM's own arithmetic would drift from ground truth. So this module re-looks-up each
-food's macros_per_100g via get_nutrition_tool (already cached from generation, see
-data.usda.cache) and computes kcal/protein deterministically, the same way
-core.nutrition.energy computes everything else in the pipeline.
-
-guardrails is [] unless `degraded` is set: evaluating deficit caps / excluded foods
-happens upstream in core.agent.graph's validate_guardrails_node (G1/G2), which this
-module doesn't own -- it only surfaces the resulting degraded flag as a warning entry.
+PlanFood carries no kcal/macros -- trusting the LLM's own arithmetic would drift
+from ground truth, so this module re-looks up each food via get_nutrition_tool
+(cache-warm from generation) and computes kcal/protein deterministically.
 """
 from core.agent import plan_generator
 from core.agent.schemas import PlanPropose
@@ -18,24 +12,21 @@ from core.models import Profile
 from core.tools.usda_tool import get_nutrition_tool
 from core.types import MealType
 
-MEAL_LABELS_FR = {
-    MealType.BREAKFAST: "Déjeuner",
-    MealType.LUNCH: "Dîner",
-    MealType.DINNER: "Souper",
-    MealType.SNACK: "Collation",
+MEAL_LABELS = {
+    MealType.BREAKFAST: "Breakfast",
+    MealType.LUNCH: "Lunch",
+    MealType.DINNER: "Dinner",
+    MealType.SNACK: "Snack",
 }
 
-# Fixed display order -- independent of the order foods happen to arrive in PlanPropose.
 MEAL_ORDER = [MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER, MealType.SNACK]
 
-_LOOKUP_FAILED_SOURCE = "estimation — FDC indisponible"
+_LOOKUP_FAILED_SOURCE = "estimated — FDC unavailable"
 
 
 def generate_daily_plan_view(profile: Profile, day: str) -> tuple[dict | None, str | None]:
-    """Compose plan_generator.generate_daily_plan() + build_plan_view() into the single
-    call a presentation layer needs: (view, None) on success, or (None, error) on failure
-    -- same two-outcome shape as GenerationResult, minus the PlanPropose/target_kcal
-    domain objects a caller like app.py has no business knowing about.
+    """Generate + build a view in one call: (view, None) on success, (None, error)
+    on failure -- so app.py never has to know about PlanPropose or target_kcal.
     """
     result = plan_generator.generate_daily_plan(profile, day)
     if result.error:
@@ -46,13 +37,11 @@ def generate_daily_plan_view(profile: Profile, day: str) -> tuple[dict | None, s
 
 
 def build_plan_view(plan: PlanPropose, target_kcal: float, degraded: bool = False) -> dict:
-    """Group `plan.foods` by meal (fixed order, FR labels) and enrich each with kcal
-    computed from a fresh get_nutrition_tool lookup. Never raises: a food whose lookup
-    fails is kept with kcal=0 and a "warn" status rather than dropped.
+    """Group `plan.foods` by meal and enrich each with a fresh kcal lookup. Never
+    raises: a food whose lookup fails is kept with kcal=0 and a "warn" status.
 
-    `degraded` (from GenerationResult.degraded, set by core.agent.graph's G7 retry
-    loop when it exhausts MAX_ATTEMPTS) surfaces as a "warn" guardrail entry rather
-    than silently showing a non-conforming plan.
+    `degraded` (G7: the graph exhausted its guardrail-retry attempts) surfaces as a
+    "warn" guardrail entry instead of silently showing a non-conforming plan.
     """
     items_by_meal: dict[MealType, list[dict]] = {meal: [] for meal in MEAL_ORDER}
     total_kcal = 0.0
@@ -66,7 +55,7 @@ def build_plan_view(plan: PlanPropose, target_kcal: float, degraded: bool = Fals
 
     meals = [
         {
-            "name": MEAL_LABELS_FR[meal],
+            "name": MEAL_LABELS[meal],
             "kcal": round(sum(item["kcal"] for item in items)),
             "items": items,
         }
@@ -75,12 +64,7 @@ def build_plan_view(plan: PlanPropose, target_kcal: float, degraded: bool = Fals
     ]
 
     guardrails = (
-        [
-            {
-                "status": "warn",
-                "message": "Plan non conforme après 2 tentatives — vérifiez le total et les aliments exclus.",
-            }
-        ]
+        [{"status": "warn", "message": "Plan non-compliant after 2 attempts — check the total and excluded foods."}]
         if degraded
         else []
     )
@@ -95,9 +79,7 @@ def build_plan_view(plan: PlanPropose, target_kcal: float, degraded: bool = Fals
 
 
 def _build_item(food) -> tuple[dict, float, float]:
-    """One food -> (display item, kcal, protein_g). On a failed lookup, kcal/protein_g
-    are 0 and the item is flagged "warn" rather than raising or being dropped.
-    """
+    """One food -> (display item, kcal, protein_g)."""
     nutrition = get_nutrition_tool.invoke({"fdc_id": food.fdc_id})
 
     if "error" in nutrition:

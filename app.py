@@ -37,18 +37,7 @@ ERROR_MESSAGES = {
 
 
 def main() -> None:
-    """Main app orchestrator.
-
-    Flow:
-    1. Configure page & CSS
-    2. Initialize session state
-    3. Render top bar (day selector + generate button)
-    4. If generate button clicked: call plan_view.generate_daily_plan_view and store
-       the view (or show an error) in session state
-    5. Render sidebar (profile + preferences)
-    6. Render main content (totals + meal plan + guardrails)
-    """
-    # Setup
+    """App entry point: page setup, top bar, sidebar, then the generated plan."""
     configure_page()
     init_state()
 
@@ -75,7 +64,7 @@ def main() -> None:
         profile = adapters.profile_from_dict(profile_dict)
         day = adapters.weekday_from_ui_day(selected_day)
 
-        with st.spinner("Génération du plan…"):
+        with st.spinner("Generating plan…"):
             view, error = plan_view.generate_daily_plan_view(profile, day)
 
         if error:

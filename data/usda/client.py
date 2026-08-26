@@ -63,10 +63,9 @@ def _retry_after_seconds(response) -> float | None:
 
 
 def _fetch_json(url: str, params: dict) -> tuple[dict | None, str | None]:
-    """GET `url` as JSON, retrying transient failures per the client's retry policy.
-
-    Returns (data, None) on success, or (None, error_code) on failure. Never raises.
-    error_code is one of "not_found", "rate_limited", "timeout", "api_error".
+    """GET `url` as JSON, retrying transient failures. Never raises: returns
+    (data, None) on success or (None, error_code) on failure, where error_code is
+    one of "not_found", "rate_limited", "timeout", "api_error".
     """
     attempt = 0
     while True:
@@ -134,11 +133,9 @@ def search_food(query: str, api_key: str) -> FoodLookupResult:
 def get_nutrition(fdc_id: str, api_key: str) -> FoodLookupResult:
     """fdc_id, description and macros_per_100g for `fdc_id`, via the cache first.
 
-    Only the four macros extract_macros knows about are cached, not USDA's full
-    foodNutrients panel (see data.usda.nutrients). A row cached before MACRO_FIELDS grew
-    a new entry is missing that field and is treated as stale here -- one live call
-    backfills it with the current full set, so extending MACRO_FIELDS self-heals the
-    cache over time instead of requiring a manual wipe.
+    A row cached before MACRO_FIELDS grew a new macro is missing it and is treated
+    as stale -- one live call backfills it, so the cache self-heals instead of
+    needing a manual wipe.
     """
     cached = get_cached_nutrition(fdc_id)
 

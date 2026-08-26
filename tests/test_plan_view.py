@@ -59,7 +59,7 @@ def test_build_plan_view_places_a_single_food_under_its_meal_with_computed_kcal(
     assert view["target_kcal"] == 2000.0
     assert len(view["meals"]) == 1
     meal = view["meals"][0]
-    assert meal["name"] == "Collation"
+    assert meal["name"] == "Snack"
     assert meal["items"] == [
         {
             "food": "Apple, raw",
@@ -83,7 +83,7 @@ def test_build_plan_view_orders_meals_breakfast_to_snack_regardless_of_input_ord
 
     view = plan_view.build_plan_view(plan, target_kcal=2000.0)
 
-    assert [meal["name"] for meal in view["meals"]] == ["Dîner", "Collation"]
+    assert [meal["name"] for meal in view["meals"]] == ["Lunch", "Snack"]
     assert [item["food"] for item in view["meals"][0]["items"]] == [
         "Chicken breast, grilled",
         "Brown rice, cooked",
@@ -117,7 +117,7 @@ def test_build_plan_view_falls_back_to_estimation_when_nutrition_lookup_fails(mo
     item = view["meals"][0]["items"][0]
     assert item["kcal"] == 0
     assert item["source_status"] == "warn"
-    assert item["source"] == "estimation — FDC indisponible"
+    assert item["source"] == "estimated — FDC unavailable"
     assert view["total_kcal"] == 0
 
 
@@ -129,7 +129,7 @@ def test_build_plan_view_omits_meals_with_no_foods(monkeypatch):
 
     view = plan_view.build_plan_view(plan, target_kcal=2000.0)
 
-    assert [meal["name"] for meal in view["meals"]] == ["Déjeuner"]
+    assert [meal["name"] for meal in view["meals"]] == ["Breakfast"]
 
 
 def test_build_plan_view_passes_target_kcal_through_and_returns_empty_guardrails():

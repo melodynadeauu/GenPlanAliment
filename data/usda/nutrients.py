@@ -1,13 +1,8 @@
 """Extract macronutrients from a USDA FoodData Central foodNutrients list.
 
-FDC nutrient numbers, e.g. from https://fdc.nal.usda.gov/ (the `nutrient.number`
-field of the API is a string, not an int -- constants below are strings so the
-comparison against parsed JSON matches).
-
-Lives under data.usda (not core.nutrition) because it's a parser for USDA's specific
-response shape, not a nutrition domain calculation -- and data.usda.cache/client need
-MACRO_FIELDS themselves, to tell a cached entry apart from one written before a field
-was added here (see data.usda.client.get_nutrition's self-healing cache).
+Lives under data.usda, not core.nutrition -- this is a parser for USDA's response
+shape, not a nutrition domain calculation. `nutrient.number` in the API is a string,
+so the constants below are strings too.
 """
 import warnings
 

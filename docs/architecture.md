@@ -1,30 +1,30 @@
-# Schéma d'architecture — Agent Meal Prep
+# Architecture diagram — Agent Meal Prep
 
-Flux de données du profil utilisateur jusqu'au plan affiché. Chaque boîte correspond
-à un module réel du code (voir le nom entre parenthèses) -- ce diagramme et le graphe
-`core/agent/graph.py` sont la même structure, pas un dessin fait après coup (D2).
+Data flow from the user profile to the displayed plan. Each box maps to a real
+module (named in parentheses) — this diagram and `core/agent/graph.py` are the
+same structure, not a drawing made after the fact.
 
 ```mermaid
 flowchart TD
-    UI["Streamlit UI\n(app.py, ui/)"] -->|profil, jour, préférences| PG["plan_generator.py"]
-    SQLITE[("SQLite\nmeal_prep.db\nactivity_calendar")] -->|activité du jour| PG
+    UI["Streamlit UI\n(app.py, ui/)"] -->|profile, day, preferences| PG["plan_generator.py"]
+    SQLITE[("SQLite\nmeal_prep.db\nactivity_calendar")] -->|today's activity| PG
     JSON[("food_preferences.json")] -->|likes/dislikes| PG
-    PG -->|BMR→TDEE→cible, G1| GRAPH["core/agent/graph.py"]
+    PG -->|BMR→TDEE→target, G1| GRAPH["core/agent/graph.py"]
 
-    subgraph GRAPH["Graphe LangGraph"]
+    subgraph GRAPH["LangGraph graph"]
         direction TB
         N1["1 · load_context"] --> N2["agent (LLM)"]
         N2 <-->|tool calls| TOOL["USDA tool + cache"]
         N2 --> N3["collect_proposal"]
         N3 --> N4["resolve_recompute (G3)"]
         N4 --> N5["validate_guardrails (G1/G2)"]
-        N5 -->|non conforme, tentative < 2| N2
-        N5 -->|conforme| N6["finalize"]
-        N5 -->|tentatives épuisées| N6b["degrade (G7)"]
+        N5 -->|non-compliant, attempt < 2| N2
+        N5 -->|compliant| N6["finalize"]
+        N5 -->|attempts exhausted| N6b["degrade (G7)"]
     end
 
-    USDA[("USDA FoodData Central API\n(1000 req/h)")] <-->|search/get, avec cache| TOOL
-    GRAPH -->|plan + garde-fous| PV["plan_view.py"]
+    USDA[("USDA FoodData Central API\n(1000 req/h)")] <-->|search/get, cached| TOOL
+    GRAPH -->|plan + guardrails| PV["plan_view.py"]
     PV -->|meals, totals, guardrails| UI
 
     classDef llm fill:#e0eeeb,stroke:#0e6a5a;
@@ -33,10 +33,10 @@ flowchart TD
     class SQLITE,JSON,USDA store;
 ```
 
-## Évolutions possibles (hors périmètre actuel)
+## Possible evolutions (out of current scope)
 
-- Human-in-the-loop : nœud de validation humaine entre `validate_guardrails` et `finalize`.
-- Multi-agent : un second agent spécialisé (ex. macros) en parallèle du nœud 2.
-- RAG : aucun corpus documentaire dans l'énoncé — non construit, placé ici comme extension.
-- Multi-utilisateurs, authentification, plan hebdomadaire complet, liste d'épicerie,
-  déploiement cloud, base vectorielle, fine-tuning.
+- Human-in-the-loop: a human validation node between `validate_guardrails` and `finalize`.
+- Multi-agent: a second specialized agent (e.g. macros) alongside node 2.
+- RAG: no document corpus in the requirements — not built, listed here as an extension.
+- Multi-user support, authentication, a full weekly plan, a grocery list, cloud
+  deployment, a vector store, fine-tuning.

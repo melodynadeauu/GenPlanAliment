@@ -1,7 +1,7 @@
-"""Hardcoded generated meal plan — stand-in for the LangGraph agent's output."""
+"""Hardcoded generated meal plan -- stand-in for the LangGraph agent's output."""
 
 DEMO_PLAN = {
-    "day": "mercredi",
+    "day": "wednesday",
     "generated_at": "09:41",
     "model_label": "Gemini 2.5 Flash",
     "target_kcal": 1806,
@@ -9,98 +9,41 @@ DEMO_PLAN = {
     "total_protein_g": 132,
     "meals": [
         {
-            "name": "Déjeuner",
+            "name": "Breakfast",
             "kcal": 512,
             "items": [
-                {
-                    "food": "Flocons d'avoine, cuits",
-                    "grams": 150,
-                    "kcal": 220,
-                    "source": "FDC 169705",
-                    "source_status": "ok",
-                },
-                {
-                    "food": "Bleuets, frais",
-                    "grams": 100,
-                    "kcal": 57,
-                    "source": "FDC 173946",
-                    "source_status": "ok",
-                },
+                {"food": "Oatmeal, cooked", "grams": 150, "kcal": 220, "source": "FDC 169705", "source_status": "ok"},
+                {"food": "Blueberries, fresh", "grams": 100, "kcal": 57, "source": "FDC 173946", "source_status": "ok"},
             ],
         },
         {
-            "name": "Dîner",
+            "name": "Lunch",
             "kcal": 618,
             "items": [
-                {
-                    "food": "Poitrine de poulet, grillée",
-                    "grams": 180,
-                    "kcal": 297,
-                    "source": "FDC 171077",
-                    "source_status": "ok",
-                },
-                {
-                    "food": "Riz brun, cuit",
-                    "grams": 150,
-                    "kcal": 167,
-                    "source": "FDC 168880",
-                    "source_status": "ok",
-                },
-                {
-                    "food": "Brocoli, vapeur",
-                    "grams": 120,
-                    "kcal": 41,
-                    "source": "FDC 170379",
-                    "source_status": "ok",
-                },
+                {"food": "Chicken breast, grilled", "grams": 180, "kcal": 297, "source": "FDC 171077", "source_status": "ok"},
+                {"food": "Brown rice, cooked", "grams": 150, "kcal": 167, "source": "FDC 168880", "source_status": "ok"},
+                {"food": "Broccoli, steamed", "grams": 120, "kcal": 41, "source": "FDC 170379", "source_status": "ok"},
             ],
         },
         {
-            "name": "Souper",
+            "name": "Dinner",
             "kcal": 542,
             "items": [
-                {
-                    "food": "Saumon, cuit au four",
-                    "grams": 150,
-                    "kcal": 312,
-                    "source": "FDC 175167",
-                    "source_status": "ok",
-                },
-                {
-                    "food": "Quinoa, cuit",
-                    "grams": 140,
-                    "kcal": 172,
-                    "source": "estimation — FDC indisponible",
-                    "source_status": "warn",
-                },
+                {"food": "Salmon, baked", "grams": 150, "kcal": 312, "source": "FDC 175167", "source_status": "ok"},
+                {"food": "Quinoa, cooked", "grams": 140, "kcal": 172, "source": "estimated — FDC unavailable", "source_status": "warn"},
             ],
         },
         {
-            "name": "Collation",
+            "name": "Snack",
             "kcal": 120,
             "items": [
-                {
-                    "food": "Amandes, nature",
-                    "grams": 20,
-                    "kcal": 120,
-                    "source": "FDC 170567",
-                    "source_status": "ok",
-                },
+                {"food": "Almonds, plain", "grams": 20, "kcal": 120, "source": "FDC 170567", "source_status": "ok"},
             ],
         },
     ],
     "guardrails": [
-        {
-            "status": "ok",
-            "message": "Déficit plafonné respecté",
-        },
-        {
-            "status": "ok",
-            "message": "Aucun aliment exclu détecté",
-        },
-        {
-            "status": "warn",
-            "message": "Quinoa estimé — FDC indisponible",
-        },
+        {"status": "ok", "message": "Deficit cap respected"},
+        {"status": "ok", "message": "No excluded food detected"},
+        {"status": "warn", "message": "Quinoa estimated — FDC unavailable"},
     ],
 }

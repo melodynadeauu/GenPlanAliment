@@ -1,17 +1,10 @@
 """SQLite-backed cache for USDA FoodData Central API responses (search + nutrition).
 
-Permanent cache: once a query or fdc_id is cached, it stays cached. Each set_ call
-commits immediately (write-through, same guarantee the old JSON cache made) -- but as a
-point write on one row, not a read-modify-write of the whole cache. The old
-data/usda/usda_cache.json read and rewrote its entire content on every single get/set,
-which scaled with total cache size (3.4MB for 48 entries, growing forever); see
-data/usda/migrate_json_cache_to_sqlite.py for the one-time migration of that file's data
-into this store.
-
-Nutrition rows store only the four macros data.usda.nutrients.extract_macros knows about,
-not USDA's full foodNutrients panel (50-100+ entries per food, most never used) -- see
-data.usda.client.get_nutrition for how a row cached before a macro field existed here
-gets silently backfilled with one live call instead of requiring a manual cache wipe.
+Permanent cache, write-through: each set_ call commits a single row immediately, so
+a query or fdc_id stays cached forever once looked up. Nutrition rows store only the
+four macros data.usda.nutrients.extract_macros knows about, not USDA's full
+foodNutrients panel -- see data.usda.client.get_nutrition for how a row cached before
+a macro field existed here gets backfilled with one live call.
 """
 import json
 import sqlite3

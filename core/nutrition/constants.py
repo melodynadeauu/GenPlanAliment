@@ -38,13 +38,12 @@ MAINTENANCE_ADJUSTMENT_KCAL = 0.0
 # https://builtwithscience.com/tdee-calculator/
 MUSCLE_GAIN_SURPLUS_KCAL = 300.0
 
-# G1 (Dossier de défense, section 05) : plancher calorique absolu, jamais franchi
-# quel que soit le déficit calculé. 1200 kcal/jour est le seuil minimal généralement
-# cité pour un adulte avant qu'une restriction ne soit considérée dangereuse sans
-# supervision médicale.
+# G1: absolute calorie floor, never crossed regardless of the computed deficit.
+# 1200 kcal/day is the commonly cited minimum for an adult before a restriction is
+# considered unsafe without medical supervision.
 # Source: https://www.mayoclinic.org/healthy-lifestyle/weight-loss/in-depth/calories/art-20048065
 CALORIE_FLOOR_KCAL = 1200.0
 
-# Second plafond sur le déficit : jamais plus de 25% du TDEE, pour les profils à
-# faible dépense où un déficit fixe de 500 kcal serait disproportionné.
+# Second cap on the deficit: never more than 25% of TDEE, for low-expenditure
+# profiles where a flat 500 kcal deficit would be disproportionate.
 MAX_DEFICIT_FRACTION_OF_TDEE = 0.25

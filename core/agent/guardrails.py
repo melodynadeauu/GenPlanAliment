@@ -1,6 +1,5 @@
 """Deterministic, Python-only checks applied to a resolved plan before it can reach
-the user (Dossier de défense G2/G6). Never delegates an exclusion or a sanitization
-decision to the LLM -- see D6/D9.
+the user (G2/G6). Never delegates an exclusion or a sanitization decision to the LLM.
 """
 import re
 

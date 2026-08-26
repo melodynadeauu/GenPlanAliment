@@ -14,7 +14,7 @@ KEY_PROFILE_HEIGHT = "profile_height"
 KEY_PROFILE_GOAL = "profile_goal"
 
 DEFAULTS = {
-    KEY_SELECTED_DAY: "mercredi",
+    KEY_SELECTED_DAY: "wednesday",
     KEY_ACTIVE_PREF_TAB: "likes",
     KEY_GENERATED_PLAN: None,
     KEY_IS_GENERATING: False,

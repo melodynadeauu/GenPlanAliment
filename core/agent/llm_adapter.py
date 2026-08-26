@@ -69,11 +69,8 @@ def generate(
     GenerationResult. `target_kcal`/`dislikes` feed the graph's G1/G2 guardrail checks.
     """
     try:
-        # get_llm() and build_graph() are inside this try too: get_llm() can raise
-        # (pydantic validation, missing env setup) and build_graph() calls bind_tools(),
-        # which can raise ValueError on an unconvertible tool schema. The pre-migration
-        # loop guarded model/tool-declaration construction the same way, not just the
-        # call loop, so generate()'s "never raises" contract has to cover this too.
+        # get_llm()/build_graph() are inside this try too: both can raise (missing env
+        # setup, an unconvertible tool schema) before the graph ever runs.
         compiled = agent_graph.build_graph(_provider.get_llm(), tools, _provider)
         initial_state: agent_graph.AgentState = {
             "messages": [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
@@ -90,11 +87,8 @@ def generate(
         }
         final_state = compiled.invoke(initial_state, config={"recursion_limit": _RECURSION_LIMIT})
     except Exception:
-        # Every LLM/tool failure core.agent.graph's own nodes can anticipate already
-        # lands in final_state["error"] below -- this catches what a node's try/except
-        # can't: LangGraph's own runtime raising between node executions (e.g.
-        # GraphRecursionError if a provider ever violated tool_choice badly enough to
-        # blow the turn budget). Keeps generate()'s "never raises" contract absolute.
+        # Catches what a node's own try/except can't: LangGraph's runtime raising
+        # between nodes (e.g. GraphRecursionError). Keeps "never raises" absolute.
         return GenerationResult(None, "api_error")
     if final_state["error"]:
         return GenerationResult(None, final_state["error"])

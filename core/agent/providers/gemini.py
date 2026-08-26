@@ -1,7 +1,7 @@
-"""Gemini provider adapter: a LangChain ChatGoogleGenerativeAI instance plus the one bit
-core.agent.graph needs to translate this SDK's own failures into the canonical error
-codes GenerationResult can carry -- retry/backoff itself now lives once,
-provider-agnostically, in core.agent.graph._invoke_with_retry.
+"""Gemini provider adapter: a LangChain ChatGoogleGenerativeAI instance plus the bit
+core.agent.graph needs to translate this SDK's failures into the canonical error
+codes GenerationResult carries. Retry/backoff itself lives once, provider-agnostically,
+in core.agent.graph._invoke_with_retry.
 """
 import os
 
@@ -11,30 +11,19 @@ from google.genai import errors as genai_errors
 from langchain_core.exceptions import ModelRateLimitError
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-# Verified live against this SDK/account on 2026-08-25: "gemini-2-flash" doesn't exist, and
-# every Gemini 2.x flash model on this account is dead -- gemini-2.5-flash and
-# gemini-2.5-flash-lite both 404 with "no longer available to new users", redirecting to
-# gemini-3.6-flash (rate-limited) and gemini-3.5-flash-lite respectively. gemini-3.5-flash-lite
-# is a genuinely separate model from gemini-3.6-flash (confirmed responding live), so it's used
-# here as the working fallback while gemini-3.6-flash's quota is exhausted.
+# gemini-2.5-flash/-lite are 404 on this account ("no longer available to new users");
+# gemini-3.5-flash-lite is the working fallback while gemini-3.6-flash's quota is out.
 GEMINI_MODEL = "gemini-3.5-flash-lite"
 
 
 def classify_exception(exc: Exception) -> str | None:
     """Return "rate_limited"/"timeout" for a failure core.agent.graph should retry, or
-    None to let it propagate as "api_error". langchain-google-genai (the google-genai
-    SDK, not the deprecated google-generativeai/google-api-core stack) raises
-    google.genai.errors.ClientError/ServerError for every HTTP failure, with the status
-    code on .code -- not a distinct exception class per status the way
-    google.api_core.exceptions used to have, so the code itself is what's inspected here.
-    Gemini has no equivalent of Groq's tool_use_failed refusal on a forced tool_choice,
-    so this never returns "invalid_output".
+    None to let it propagate as "api_error". Gemini has no equivalent of Groq's
+    tool_use_failed refusal, so this never returns "invalid_output".
 
-    ChatGoogleGenerativeAI re-raises a 429 ClientError as its own GoogleRateLimitError
-    (a langchain_core.exceptions.ModelRateLimitError), NOT a ClientError subclass --
-    verified live against langchain-google-genai 4.3.5. Check the LangChain-classified
-    type first; keep the raw genai_errors.ClientError check as a fallback for anything
-    that bypasses the chat model layer.
+    ChatGoogleGenerativeAI re-raises a 429 as its own ModelRateLimitError rather than
+    a genai ClientError subclass -- check that first, and keep the raw ClientError/
+    ServerError check as a fallback for anything that bypasses the chat model layer.
     """
     if isinstance(exc, ModelRateLimitError):
         return "rate_limited"

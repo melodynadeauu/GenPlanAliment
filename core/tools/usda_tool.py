@@ -1,16 +1,11 @@
 """LLM-facing tools wrapping data.usda.client.
 
-Two distinct @tool-decorated functions rather than one generic dispatch with an
-"action" param, so each stays a plain, single-purpose function an LLM can call
-directly. Neither ever raises: on failure they return {"error": <code>}, one of
-data.usda.client's four error codes (not_found, rate_limited, timeout, api_error).
+Two @tool-decorated functions, each a plain single-purpose call the LLM can make
+directly. Neither raises: on failure they return {"error": <code>}, one of
+data.usda.client's four error codes.
 
-@tool (langchain_core.tools) turns each function into a StructuredTool: its .name,
-.description and argument schema are inferred from the function name, docstring and
-type hints -- core.agent.graph binds these straight to the LLM, replacing the manual
-JSON-schema building core.agent.tool_schema used to do by hand. Because of that, a
-StructuredTool is no longer a plain callable -- call through .invoke({...}), not
-tool(...) directly. core.agent.plan_view does this for get_nutrition_tool.
+@tool turns a function into a StructuredTool -- it's no longer a plain callable, so
+call it through .invoke({...}), not directly (see core.agent.plan_view).
 """
 from langchain_core.tools import tool
 
@@ -19,9 +14,8 @@ from data.usda import client as usda_client
 
 @tool
 def search_food_tool(query: str) -> dict:
-    """Search USDA foods for `query`. Success: {"results": [{"fdc_id", "description"}, ...]}
-    (client.py already trims each result to fdc_id + description; passed through as-is).
-    Failure: {"error": <code>}.
+    """Search USDA foods for `query`.
+    Success: {"results": [{"fdc_id", "description"}, ...]}. Failure: {"error": <code>}.
     """
     result = usda_client.search_food(query, usda_client.USDA_API_KEY)
     if result.error is not None:
@@ -31,10 +25,8 @@ def search_food_tool(query: str) -> dict:
 
 @tool
 def get_nutrition_tool(fdc_id: str) -> dict:
-    """Look up nutrition for `fdc_id`. Success: {"fdc_id", "description",
-    "macros_per_100g"} -- client.py already extracts and caches only these macros
-    (see data.usda.nutrients), so this is a passthrough, not a transform.
-    Failure: {"error": <code>}.
+    """Look up nutrition for `fdc_id`.
+    Success: {"fdc_id", "description", "macros_per_100g"}. Failure: {"error": <code>}.
     """
     result = usda_client.get_nutrition(fdc_id, usda_client.USDA_API_KEY)
     if result.error is not None:

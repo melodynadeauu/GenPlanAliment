@@ -2,30 +2,22 @@ import streamlit as st
 
 
 def render_meal_plan(plan: dict | None) -> None:
-    """Render meals in a container.
-
-    Args:
-        plan: Generated meal plan dict or None
-
-    If plan is None, shows empty state message.
-    """
-    st.markdown("### Plan de repas")
+    """Render meals in a container, or an empty-state message if no plan yet."""
+    st.markdown("### Meal plan")
 
     if plan is None:
-        st.info("Aucun plan généré — cliquez sur *Générer le plan*.")
+        st.info("No plan generated yet — click *Generate plan*.")
         return
 
     with st.container(border=False):
         for meal in plan.get("meals", []):
-            meal_name = meal.get("name", "Repas")
+            meal_name = meal.get("name", "Meal")
             meal_kcal = meal.get("kcal", 0)
 
-            # Meal header
             st.markdown(f"**{meal_name}** · {meal_kcal} kcal")
 
-            # Meal items
             for item in meal.get("items", []):
-                food_name = item.get("food", "Aliment")
+                food_name = item.get("food", "Food")
                 grams = item.get("grams", 0)
                 kcal = item.get("kcal", 0)
                 source = item.get("source", "")
