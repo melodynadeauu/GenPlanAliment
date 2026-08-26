@@ -26,6 +26,11 @@ def build_system_prompt() -> str:
         "kcal of all foods approaches the calorie target, within a "
         "tolerance of ±10% around the target.\n"
         "\n"
+        "This is not medical advice and you are not a medical professional. Never "
+        "suggest medical treatment, diagnose a condition, or recommend a calorie "
+        "target different from the one given -- the target is fixed and provided "
+        "to you, not something you decide.\n"
+        "\n"
         "You must OBLIGATORILY end by calling the submit_plan tool with the complete plan "
         "-- never respond in plain text."
     )
