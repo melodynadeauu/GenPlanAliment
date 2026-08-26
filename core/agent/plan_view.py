@@ -8,8 +8,9 @@ food's macros_per_100g via get_nutrition_tool (already cached from generation, s
 data.usda.cache) and computes kcal/protein deterministically, the same way
 core.nutrition.energy computes everything else in the pipeline.
 
-guardrails is always [] here -- evaluating deficit caps / excluded foods / estimated
-items is a separate concern this module doesn't own.
+guardrails is [] unless `degraded` is set: evaluating deficit caps / excluded foods
+happens upstream in core.agent.graph's validate_guardrails_node (G1/G2), which this
+module doesn't own -- it only surfaces the resulting degraded flag as a warning entry.
 """
 from core.agent import plan_generator
 from core.agent.schemas import PlanPropose
@@ -41,13 +42,17 @@ def generate_daily_plan_view(profile: Profile, day: str) -> tuple[dict | None, s
         return None, result.error
     assert result.plan is not None
     assert result.target_kcal is not None
-    return build_plan_view(result.plan, result.target_kcal), None
+    return build_plan_view(result.plan, result.target_kcal, degraded=result.degraded), None
 
 
-def build_plan_view(plan: PlanPropose, target_kcal: float) -> dict:
+def build_plan_view(plan: PlanPropose, target_kcal: float, degraded: bool = False) -> dict:
     """Group `plan.foods` by meal (fixed order, FR labels) and enrich each with kcal
     computed from a fresh get_nutrition_tool lookup. Never raises: a food whose lookup
     fails is kept with kcal=0 and a "warn" status rather than dropped.
+
+    `degraded` (from GenerationResult.degraded, set by core.agent.graph's G7 retry
+    loop when it exhausts MAX_ATTEMPTS) surfaces as a "warn" guardrail entry rather
+    than silently showing a non-conforming plan.
     """
     items_by_meal: dict[MealType, list[dict]] = {meal: [] for meal in MEAL_ORDER}
     total_kcal = 0.0
@@ -69,12 +74,23 @@ def build_plan_view(plan: PlanPropose, target_kcal: float) -> dict:
         if (items := items_by_meal[meal])
     ]
 
+    guardrails = (
+        [
+            {
+                "status": "warn",
+                "message": "Plan non conforme après 2 tentatives — vérifiez le total et les aliments exclus.",
+            }
+        ]
+        if degraded
+        else []
+    )
+
     return {
         "target_kcal": target_kcal,
         "total_kcal": round(total_kcal),
         "total_protein_g": round(total_protein_g),
         "meals": meals,
-        "guardrails": [],
+        "guardrails": guardrails,
     }
 
 
