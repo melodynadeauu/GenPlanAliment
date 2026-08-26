@@ -21,7 +21,6 @@ from ui.components.totals_row import render_totals_row
 from ui.components.meal_plan import render_meal_plan
 from ui.components.guardrails_bar import render_guardrails_bar
 
-from fixtures.demo_preferences import DEMO_LIKES, DEMO_DISLIKES
 from fixtures.demo_week import DEMO_WEEK
 
 # Error codes GenerationResult.error can carry (see core/agent/llm_adapter.py), each
@@ -82,7 +81,7 @@ def main() -> None:
     with st.sidebar:
         render_profile_section()
         st.divider()
-        render_preferences_section(DEMO_LIKES, DEMO_DISLIKES)
+        render_preferences_section()
 
     # Main content
     plan = st.session_state[KEY_GENERATED_PLAN]

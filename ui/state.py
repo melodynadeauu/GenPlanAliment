@@ -6,7 +6,6 @@ from fixtures.demo_profile import DEMO_PROFILE
 
 KEY_SELECTED_DAY = "selected_day"
 KEY_ACTIVE_PREF_TAB = "active_pref_tab"
-KEY_PREF_FILTER = "pref_filter_query"
 KEY_GENERATED_PLAN = "generated_plan"
 KEY_IS_GENERATING = "is_generating"
 KEY_PROFILE_AGE = "profile_age"
@@ -17,7 +16,6 @@ KEY_PROFILE_GOAL = "profile_goal"
 DEFAULTS = {
     KEY_SELECTED_DAY: "mercredi",
     KEY_ACTIVE_PREF_TAB: "likes",
-    KEY_PREF_FILTER: "",
     KEY_GENERATED_PLAN: None,
     KEY_IS_GENERATING: False,
     # Profile fields seed from DEMO_PROFILE on first run, then live entirely in

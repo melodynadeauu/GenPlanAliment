@@ -1,70 +1,59 @@
-"""Sidebar section: scalable food preferences (likes/dislikes)."""
+"""Sidebar section: editable food preferences (likes/dislikes), backed by
+data/preferences/food_preferences.json.
+"""
 
 import streamlit as st
-from ui.state import KEY_ACTIVE_PREF_TAB, KEY_PREF_FILTER
+
+from data.preferences import store as preferences_store
+from ui.state import KEY_ACTIVE_PREF_TAB
+
+_TAB_LABELS = {"likes": "J'aime", "dislikes": "Je n'aime pas"}
 
 
-def render_preferences_section(likes: list[str], dislikes: list[str]) -> None:
-    """Render the segmented tab + search filter + scrollable chip list.
+def render_preferences_section() -> None:
+    """Render the segmented tab + editable chip list (add/remove) for the active tab.
 
-    Args:
-        likes: List of preferred foods
-        dislikes: List of avoided foods
+    Reads preferences fresh from the JSON file on every run and, if the user adds or
+    removes an item, saves the updated preferences back immediately — so the next
+    plan generation (core.agent.plan_generator, which also reads the JSON file) picks
+    up the change.
 
     Reads/writes session_state:
         - KEY_ACTIVE_PREF_TAB: "likes" or "dislikes"
-        - KEY_PREF_FILTER: Search query (substring match, case-insensitive)
     """
     st.markdown("### Préférences")
+
+    prefs = preferences_store.load_preferences()
+    likes = prefs["likes"]
+    dislikes = prefs["dislikes"]
 
     active_tab = st.session_state.get(KEY_ACTIVE_PREF_TAB, "likes")
 
     tab_col1, tab_col2 = st.columns(2)
     with tab_col1:
-        if st.button(f"J'aime ({len(likes)})", use_container_width=True):
+        if st.button(f"J'aime ({len(likes)})", width="stretch"):
             st.session_state[KEY_ACTIVE_PREF_TAB] = "likes"
     with tab_col2:
-        if st.button(f"Je n'aime pas ({len(dislikes)})", use_container_width=True):
+        if st.button(f"Je n'aime pas ({len(dislikes)})", width="stretch"):
             st.session_state[KEY_ACTIVE_PREF_TAB] = "dislikes"
 
     # Reread session state after button click
     active_tab = st.session_state.get(KEY_ACTIVE_PREF_TAB, "likes")
+    active_items = likes if active_tab == "likes" else dislikes
 
-    # Search filter
-    filter_query = st.text_input(
-        "Chercher",
-        value=st.session_state.get(KEY_PREF_FILTER, ""),
-        key=f"pref_filter_input",
-    )
-    st.session_state[KEY_PREF_FILTER] = filter_query
-
-    # Determine which list to display and filter
-    if active_tab == "likes":
-        items_to_show = likes
-        chip_class = "chip-accent"
-    else:
-        items_to_show = dislikes
-        chip_class = "chip-danger"
-
-    # Filter items by search query (substring, case-insensitive)
-    filter_query_lower = (filter_query or "").lower()
-    filtered_items = [
-        item for item in items_to_show
-        if filter_query_lower in item.lower()
-    ]
-
-    # Render chips in scrollable container
     st.markdown("#### Aliments")
-    with st.container(height=160, border=False):
-        chip_html = ""
-        for item in filtered_items:
-            chip_html += f'<span class="chip {chip_class}">{item}</span>'
+    selected = st.multiselect(
+        _TAB_LABELS[active_tab],
+        options=active_items,
+        default=active_items,
+        accept_new_options=True,
+        label_visibility="collapsed",
+        placeholder="Choisir ou ajouter un aliment",
+        key=f"pref_{active_tab}_multiselect",
+    )
 
-        if chip_html:
-            st.markdown(chip_html, unsafe_allow_html=True)
+    if selected != active_items:
+        if active_tab == "likes":
+            preferences_store.save_preferences({"likes": selected, "dislikes": dislikes})
         else:
-            st.markdown(
-                f"*Aucun aliment trouvé pour « {filter_query} »*"
-                if filter_query
-                else "*Aucun aliment*"
-            )
+            preferences_store.save_preferences({"likes": likes, "dislikes": selected})
