@@ -6,7 +6,7 @@ to display for success vs. error.
 """
 import dataclasses
 
-from core.agent import llm_adapter, prompts
+from core.agent import guardrails, llm_adapter, prompts
 from core.agent.llm_adapter import GenerationResult
 from core.models import ActivityEntry, Profile
 from core.nutrition import (
@@ -40,8 +40,11 @@ def generate_daily_plan(profile: Profile, day: str) -> GenerationResult:
     tdee = compute_tdee(sedentary_base, exercise_kcal)
     target_kcal = compute_target_kcal(tdee, profile.goal)
 
+    likes = guardrails.sanitize_preference_items(prefs["likes"])
+    dislikes = guardrails.sanitize_preference_items(prefs["dislikes"])
+
     system_prompt = prompts.build_system_prompt()
-    user_prompt = prompts.build_user_prompt(target_kcal, activities, prefs["likes"], prefs["dislikes"])
+    user_prompt = prompts.build_user_prompt(target_kcal, activities, likes, dislikes)
 
     result = llm_adapter.generate(system_prompt, user_prompt, tools=[search_food_tool, get_nutrition_tool])
     return dataclasses.replace(result, target_kcal=target_kcal)
