@@ -1,18 +1,15 @@
-"""Gemini provider adapter: translates the canonical tool-calling protocol
-(core.agent.tool_schema) to and from the google-generativeai SDK.
+"""Gemini provider adapter: a LangChain ChatGoogleGenerativeAI instance plus the one bit
+core.agent.graph needs to translate this SDK's own failures into the canonical error
+codes GenerationResult can carry -- retry/backoff itself now lives once,
+provider-agnostically, in core.agent.graph._invoke_with_retry.
 """
 import os
-import time
-from typing import Any
 
-import google.generativeai as genai
+import httpx
 from dotenv import load_dotenv
-from google.api_core import exceptions as gemini_exceptions
-from google.generativeai.types import FunctionDeclaration, Tool
-
-from core.agent.errors import LLMRateLimitedError, LLMTimeoutError
-from core.agent.tool_schema import ToolCall, ToolDeclaration
-
+from google.genai import errors as genai_errors
+from langchain_core.exceptions import ModelRateLimitError
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Verified live against this SDK/account on 2026-08-25: "gemini-2-flash" doesn't exist, and
 # every Gemini 2.x flash model on this account is dead -- gemini-2.5-flash and
@@ -22,15 +19,32 @@ from core.agent.tool_schema import ToolCall, ToolDeclaration
 # here as the working fallback while gemini-3.6-flash's quota is exhausted.
 GEMINI_MODEL = "gemini-3.5-flash-lite"
 
-RETRY_DELAYS_SECONDS = [1, 2]
-MAX_RETRIES = 2
 
-_RATE_LIMIT_EXCEPTIONS = (gemini_exceptions.ResourceExhausted,)
-_TRANSIENT_EXCEPTIONS = (
-    gemini_exceptions.DeadlineExceeded,
-    gemini_exceptions.ServiceUnavailable,
-    gemini_exceptions.InternalServerError,
-)
+def classify_exception(exc: Exception) -> str | None:
+    """Return "rate_limited"/"timeout" for a failure core.agent.graph should retry, or
+    None to let it propagate as "api_error". langchain-google-genai (the google-genai
+    SDK, not the deprecated google-generativeai/google-api-core stack) raises
+    google.genai.errors.ClientError/ServerError for every HTTP failure, with the status
+    code on .code -- not a distinct exception class per status the way
+    google.api_core.exceptions used to have, so the code itself is what's inspected here.
+    Gemini has no equivalent of Groq's tool_use_failed refusal on a forced tool_choice,
+    so this never returns "invalid_output".
+
+    ChatGoogleGenerativeAI re-raises a 429 ClientError as its own GoogleRateLimitError
+    (a langchain_core.exceptions.ModelRateLimitError), NOT a ClientError subclass --
+    verified live against langchain-google-genai 4.3.5. Check the LangChain-classified
+    type first; keep the raw genai_errors.ClientError check as a fallback for anything
+    that bypasses the chat model layer.
+    """
+    if isinstance(exc, ModelRateLimitError):
+        return "rate_limited"
+    if isinstance(exc, genai_errors.ClientError) and exc.code == 429:
+        return "rate_limited"
+    if isinstance(exc, genai_errors.ServerError):
+        return "timeout"
+    if isinstance(exc, (httpx.TimeoutException, httpx.ConnectError)):
+        return "timeout"
+    return None
 
 
 def _require_api_key(value: str | None) -> str:
@@ -44,97 +58,11 @@ def _require_api_key(value: str | None) -> str:
 
 load_dotenv()
 GEMINI_API_KEY = _require_api_key(os.getenv("GEMINI_API_KEY"))
-# The deprecated google-generativeai package re-exports these via plain `from x import y`
-# with no `__all__`, so pyright treats them as private even though they work fine at runtime
-# (verified live) -- see google/generativeai/__init__.py.
-genai.configure(api_key=GEMINI_API_KEY)  # pyright: ignore[reportPrivateImportUsage]
 
 
-def _to_python(value: Any) -> Any:
-    """Recursively convert proto-plus MapComposite/RepeatedComposite (what this SDK returns
-    for function_call.args) into plain dict/list. Verified live: a nested submit_plan call
-    (foods: [...]) comes back with nested MapComposite/RepeatedComposite, not plain Python.
-    Untyped in and out on purpose -- it genuinely returns dict, list, or a scalar depending on
-    the branch, and `part.function_call.args` itself has no useful static type to start from.
+def get_llm() -> ChatGoogleGenerativeAI:
+    """Build a fresh chat model instance for one generate() call. max_retries=0: retrying
+    what classify_exception() recognizes is core.agent.graph's job (shared across
+    providers, bounded, and sleep-mockable in tests), not this SDK's own opaque policy.
     """
-    if hasattr(value, "items"):
-        return {key: _to_python(item) for key, item in value.items()}
-    if hasattr(value, "__iter__") and not isinstance(value, (str, bytes)):
-        return [_to_python(item) for item in value]
-    return value
-
-
-def _tool_config(force_tool_name: str | None) -> dict:
-    if force_tool_name is not None:
-        return {"function_calling_config": {"mode": "ANY", "allowed_function_names": [force_tool_name]}}
-    return {"function_calling_config": {"mode": "AUTO"}}
-
-
-def start_conversation(system_prompt: str, user_prompt: str, tool_declarations: list[ToolDeclaration]) -> dict:
-    """Gemini conversation state: the configured model (tools baked in -- they don't change
-    across a generate() call's turns) plus the message history.
-    """
-    tools = [
-        Tool(
-            function_declarations=[
-                FunctionDeclaration(name=d.name, description=d.description, parameters=d.parameters)
-                for d in tool_declarations
-            ]
-        )
-    ]
-    model = genai.GenerativeModel(  # pyright: ignore[reportPrivateImportUsage]
-        GEMINI_MODEL, system_instruction=system_prompt, tools=tools
-    )
-    return {"model": model, "messages": [{"role": "user", "parts": [user_prompt]}]}
-
-
-def call(state: dict, force_tool_name: str | None) -> tuple[dict, list[ToolCall]]:
-    """One Gemini API call, retried per RETRY_DELAYS_SECONDS/MAX_RETRIES. Appends the
-    model's turn to state["messages"] before returning, whether or not it made a tool call,
-    so the next call sees it.
-    """
-    attempt = 0
-    while True:
-        try:
-            response = state["model"].generate_content(
-                state["messages"], tool_config=_tool_config(force_tool_name)
-            )
-        except _RATE_LIMIT_EXCEPTIONS:
-            if attempt >= MAX_RETRIES:
-                raise LLMRateLimitedError()
-            time.sleep(RETRY_DELAYS_SECONDS[attempt])
-            attempt += 1
-            continue
-        except _TRANSIENT_EXCEPTIONS:
-            if attempt >= MAX_RETRIES:
-                raise LLMTimeoutError()
-            time.sleep(RETRY_DELAYS_SECONDS[attempt])
-            attempt += 1
-            continue
-        break
-
-    content = response.candidates[0].content
-    state["messages"].append(content)
-
-    tool_calls = [
-        ToolCall(
-            id=f"{part.function_call.name}-{i}",
-            name=part.function_call.name,
-            arguments=_to_python(part.function_call.args),
-        )
-        for i, part in enumerate(content.parts)
-        if part.function_call
-    ]
-    return state, tool_calls
-
-
-def append_tool_results(state: dict, results: list[tuple[ToolCall, dict]]) -> dict:
-    """Verified live: the function-response turn must use role "user" -- this SDK/backend
-    rejects role "function" ("Role 'function' is not supported"); "user" is what the SDK's
-    own automatic-function-calling path uses internally.
-    """
-    for tool_call, result in results:
-        state["messages"].append(
-            {"role": "user", "parts": [{"function_response": {"name": tool_call.name, "response": result}}]}
-        )
-    return state
+    return ChatGoogleGenerativeAI(model=GEMINI_MODEL, google_api_key=GEMINI_API_KEY, max_retries=0)

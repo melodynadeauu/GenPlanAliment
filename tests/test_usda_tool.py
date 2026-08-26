@@ -1,8 +1,10 @@
-"""Tests for core.tools.usda_tool: LLM-facing wrappers around data.usda.client.
+"""Tests for core.tools.usda_tool: LLM-facing @tool wrappers around data.usda.client.
 
-data.usda.client.search_food / get_nutrition are monkeypatched directly (not
-requests.get) -- these tests only check the tool's own wrapping, not the
-client's retry/caching behaviour, which is covered in tests/test_usda_client*.
+search_food_tool/get_nutrition_tool are StructuredTool instances (langchain_core.tools),
+not plain functions -- called via .invoke({...}), not fn(...). data.usda.client.search_food
+/ get_nutrition are monkeypatched directly (not requests.get) -- these tests only check the
+tool's own wrapping, not the client's retry/caching behaviour, which is covered in
+tests/test_usda_client*.
 """
 import pytest
 
@@ -10,6 +12,27 @@ from core.tools import usda_tool
 from data.usda import client as usda_client
 
 ERROR_CODES = ["not_found", "rate_limited", "timeout", "api_error"]
+
+
+# --- wiring: these are real LangChain tools, not plain functions ---
+
+
+def test_search_food_tool_is_a_structured_tool_named_after_the_function():
+    assert usda_tool.search_food_tool.name == "search_food_tool"
+    assert "Search USDA foods" in usda_tool.search_food_tool.description
+
+
+def test_get_nutrition_tool_is_a_structured_tool_named_after_the_function():
+    assert usda_tool.get_nutrition_tool.name == "get_nutrition_tool"
+    assert "Look up nutrition" in usda_tool.get_nutrition_tool.description
+
+
+def test_a_structured_tool_is_no_longer_directly_callable():
+    """Documents the breaking change @tool introduces -- callers must use .invoke({...}).
+    core.agent.plan_view was the one caller relying on the old plain-callable form
+    (see Task 3)."""
+    with pytest.raises(TypeError):
+        usda_tool.search_food_tool("apple")
 
 
 # --- search_food_tool ---
@@ -24,7 +47,7 @@ def test_search_food_tool_returns_results_on_success(monkeypatch):
         ),
     )
 
-    result = usda_tool.search_food_tool("apple")
+    result = usda_tool.search_food_tool.invoke({"query": "apple"})
 
     assert result == {"results": [{"fdc_id": 123, "description": "Apple, raw"}]}
 
@@ -37,7 +60,7 @@ def test_search_food_tool_passes_query_and_module_api_key(monkeypatch):
         lambda query, api_key: calls.append((query, api_key)) or usda_client.FoodLookupResult([], None),
     )
 
-    usda_tool.search_food_tool("banana")
+    usda_tool.search_food_tool.invoke({"query": "banana"})
 
     assert calls == [("banana", usda_client.USDA_API_KEY)]
 
@@ -50,7 +73,7 @@ def test_search_food_tool_returns_error_dict_never_raises(monkeypatch, error_cod
         lambda query, api_key: usda_client.FoodLookupResult(None, error_code),
     )
 
-    result = usda_tool.search_food_tool("zzz_nonexistent")
+    result = usda_tool.search_food_tool.invoke({"query": "zzz_nonexistent"})
 
     assert result == {"error": error_code}
 
@@ -74,7 +97,7 @@ def test_get_nutrition_tool_passes_through_the_client_food_dict_unchanged(monkey
         lambda fdc_id, api_key: usda_client.FoodLookupResult(CHICKEN_GRAVY_FOOD, None),
     )
 
-    result = usda_tool.get_nutrition_tool("2620254")
+    result = usda_tool.get_nutrition_tool.invoke({"fdc_id": "2620254"})
 
     assert result == CHICKEN_GRAVY_FOOD
 
@@ -88,7 +111,7 @@ def test_get_nutrition_tool_passes_fdc_id_and_module_api_key(monkeypatch):
         or usda_client.FoodLookupResult(CHICKEN_GRAVY_FOOD, None),
     )
 
-    usda_tool.get_nutrition_tool("2620254")
+    usda_tool.get_nutrition_tool.invoke({"fdc_id": "2620254"})
 
     assert calls == [("2620254", usda_client.USDA_API_KEY)]
 
@@ -101,6 +124,6 @@ def test_get_nutrition_tool_returns_error_dict_never_raises(monkeypatch, error_c
         lambda fdc_id, api_key: usda_client.FoodLookupResult(None, error_code),
     )
 
-    result = usda_tool.get_nutrition_tool("1")
+    result = usda_tool.get_nutrition_tool.invoke({"fdc_id": "1"})
 
     assert result == {"error": error_code}

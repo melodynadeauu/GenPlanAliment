@@ -82,7 +82,7 @@ def _build_item(food) -> tuple[dict, float, float]:
     """One food -> (display item, kcal, protein_g). On a failed lookup, kcal/protein_g
     are 0 and the item is flagged "warn" rather than raising or being dropped.
     """
-    nutrition = get_nutrition_tool(food.fdc_id)
+    nutrition = get_nutrition_tool.invoke({"fdc_id": food.fdc_id})
 
     if "error" in nutrition:
         return (

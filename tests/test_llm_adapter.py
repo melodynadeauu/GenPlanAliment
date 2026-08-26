@@ -1,193 +1,101 @@
-"""Tests for core.agent.llm_adapter: the provider-agnostic tool-calling loop.
-core.agent.providers.{gemini,groq} are never touched here -- llm_adapter._provider is
-swapped for a fake that speaks the same three-function protocol.
+"""Tests for core.agent.llm_adapter: builds the LangGraph graph (core.agent.graph) for
+the configured provider and translates its final state into GenerationResult.
+core.agent.graph itself is never touched here -- llm_adapter.agent_graph.build_graph is
+monkeypatched to return a fake compiled graph with a scripted final state.
 """
 import pytest
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from core.agent import llm_adapter
-from core.agent.errors import LLMInvalidOutputError, LLMRateLimitedError, LLMTimeoutError
-from core.agent.tool_schema import ToolCall
+from core.agent.schemas import PlanFood, PlanPropose
 
 
-def fake_tool(query: str) -> dict:
-    """A fake data tool."""
-    return {"results": [{"fdc_id": "1", "description": query}]}
+class FakeCompiledGraph:
+    def __init__(self, final_state):
+        self.final_state = final_state
+        self.invoke_calls = []
 
-
-def broken_tool(query: str) -> dict:
-    """A fake data tool that raises instead of returning."""
-    raise TypeError("boom")
-
-
-class FakeProvider:
-    """Replays a scripted list of turns; each turn is either a list[ToolCall] (what the
-    model called this turn) or an exception instance to raise from call()."""
-
-    def __init__(self, turns):
-        self.turns = list(turns)
-        self.calls = []
-        self.appended_results = []
-
-    def start_conversation(self, system_prompt, user_prompt, tool_declarations):
-        return {"system_prompt": system_prompt, "user_prompt": user_prompt, "declarations": tool_declarations}
-
-    def call(self, state, force_tool_name):
-        self.calls.append(force_tool_name)
-        turn = self.turns.pop(0)
-        if isinstance(turn, Exception):
-            raise turn
-        return state, turn
-
-    def append_tool_results(self, state, results):
-        self.appended_results.append(results)
-        return state
+    def invoke(self, initial_state, config=None):
+        self.invoke_calls.append((initial_state, config))
+        return self.final_state
 
 
 @pytest.fixture
-def fake_provider(monkeypatch):
-    def _install(turns):
-        provider = FakeProvider(turns)
-        monkeypatch.setattr(llm_adapter, "_provider", provider)
-        return provider
+def fake_build_graph(monkeypatch):
+    def _install(final_state):
+        fake_graph = FakeCompiledGraph(final_state)
+        monkeypatch.setattr(llm_adapter.agent_graph, "build_graph", lambda *a, **k: fake_graph)
+        return fake_graph
 
     return _install
 
 
-def test_generate_finalizes_immediately_when_submit_plan_called_first_turn(fake_provider):
-    submit_call = ToolCall(
-        id="1",
-        name="submit_plan",
-        arguments={
-            "foods": [{"description": "Apple", "fdc_id": "1", "meal": "snack", "grams": 100.0}]
-        },
-    )
-    fake_provider([[submit_call]])
+def test_generate_returns_the_plan_from_the_final_state_on_success(fake_build_graph):
+    plan = PlanPropose(foods=[PlanFood(description="Apple", fdc_id="1", meal="snack", grams=100.0)])
+    fake_build_graph({"plan": plan, "error": None})
 
-    result = llm_adapter.generate("system", "user", [fake_tool])
+    result = llm_adapter.generate("system", "user", [])
 
-    assert result.error is None
-    assert result.plan.foods[0].description == "Apple"
+    assert result == llm_adapter.GenerationResult(plan, None)
 
 
-def test_generate_executes_data_tool_then_finalizes(fake_provider):
-    tool_call = ToolCall(id="1", name="fake_tool", arguments={"query": "chicken gravy"})
-    submit_call = ToolCall(
-        id="2",
-        name="submit_plan",
-        arguments={
-            "foods": [
-                {"description": "CHICKEN GRAVY", "fdc_id": "2620254", "meal": "lunch", "grams": 150.0}
-            ]
-        },
-    )
-    provider = fake_provider([[tool_call], [submit_call]])
+@pytest.mark.parametrize("error", ["rate_limited", "timeout", "api_error", "invalid_output"])
+def test_generate_returns_the_error_from_the_final_state(fake_build_graph, error):
+    fake_build_graph({"plan": None, "error": error})
 
-    result = llm_adapter.generate("system", "user", [fake_tool])
+    result = llm_adapter.generate("system", "user", [])
 
-    assert result.error is None
-    assert provider.appended_results == [
-        [(tool_call, {"results": [{"fdc_id": "1", "description": "chicken gravy"}]})]
-    ]
+    assert result == llm_adapter.GenerationResult(None, error)
 
 
-def test_generate_feeds_back_unknown_tool_error_and_continues(fake_provider):
-    unknown_call = ToolCall(id="1", name="not_a_real_tool", arguments={})
-    submit_call = ToolCall(id="2", name="submit_plan", arguments={"foods": []})
-    provider = fake_provider([[unknown_call], [submit_call]])
+def test_generate_builds_the_initial_state_with_system_and_user_messages(fake_build_graph):
+    fake_graph = fake_build_graph({"plan": None, "error": "timeout"})
 
-    result = llm_adapter.generate("system", "user", [fake_tool])
+    llm_adapter.generate("sys prompt", "user prompt", [])
 
-    assert result.error is None
-    assert provider.appended_results == [[(unknown_call, {"error": "unknown_tool"})]]
-
-
-def test_generate_feeds_back_tool_execution_error_and_continues(fake_provider):
-    broken_call = ToolCall(id="1", name="broken_tool", arguments={"query": "chicken gravy"})
-    submit_call = ToolCall(id="2", name="submit_plan", arguments={"foods": []})
-    provider = fake_provider([[broken_call], [submit_call]])
-
-    result = llm_adapter.generate("system", "user", [broken_tool])
-
-    assert result.error is None
-    assert provider.appended_results == [[(broken_call, {"error": "tool_execution_error"})]]
+    initial_state, config = fake_graph.invoke_calls[0]
+    assert isinstance(initial_state["messages"][0], SystemMessage)
+    assert initial_state["messages"][0].content == "sys prompt"
+    assert isinstance(initial_state["messages"][1], HumanMessage)
+    assert initial_state["messages"][1].content == "user prompt"
+    assert initial_state["turn"] == 0
+    assert initial_state["tool_was_called"] is False
+    assert initial_state["plan"] is None
+    assert initial_state["error"] is None
+    assert config["recursion_limit"] >= 50
 
 
-def test_max_auto_turns_is_generous_enough_for_one_tool_call_per_turn_models():
-    """Verified live against Groq's openai/gpt-oss-120b (2026-08-25): unlike Gemini, which
-    batches many tool calls into a single turn, it calls exactly one tool per turn --
-    search then lookup, one food at a time. A budget only large enough for Gemini's
-    calling pattern starves it before it finishes gathering data, so the forced final
-    turn fails with a tool_choice mismatch (core.agent.providers.groq raises
-    LLMInvalidOutputError) instead of ever reaching submit_plan."""
-    assert llm_adapter.MAX_AUTO_TURNS >= 15
+def test_generate_returns_api_error_if_the_graph_itself_raises(monkeypatch):
+    """Defense in depth for the "never raises" contract: core.agent.graph's own nodes
+    already turn every LLM/tool failure into a state["error"] string, but LangGraph's
+    runtime can still raise between node executions on its own (e.g. GraphRecursionError
+    if a provider ever violated tool_choice badly enough to blow the turn budget) --
+    that exception happens outside any node's try/except, so generate() must catch it too,
+    not just trust the graph's final_state["error"] to always be reachable."""
+
+    class RaisingGraph:
+        def invoke(self, initial_state, config=None):
+            raise RuntimeError("graph blew up")
+
+    monkeypatch.setattr(llm_adapter.agent_graph, "build_graph", lambda *a, **k: RaisingGraph())
+
+    result = llm_adapter.generate("system", "user", [])
+
+    assert result == llm_adapter.GenerationResult(None, "api_error")
 
 
-def test_generate_forces_submit_plan_after_max_auto_turns(fake_provider):
-    submit_call = ToolCall(
-        id="1",
-        name="submit_plan",
-        arguments={
-            "foods": [{"description": "Apple", "fdc_id": "1", "meal": "snack", "grams": 100.0}]
-        },
-    )
-    provider = fake_provider([[]] * llm_adapter.MAX_AUTO_TURNS + [[submit_call]])
+def test_generate_returns_api_error_if_build_graph_itself_raises(monkeypatch):
+    """get_llm()/build_graph() must be inside generate()'s try too: get_llm() can raise
+    (pydantic validation, missing env setup) and build_graph() calls bind_tools(), which
+    can raise ValueError on an unconvertible tool schema. Neither happens inside
+    compiled.invoke(), so this is a distinct failure point from the RaisingGraph case
+    above."""
 
-    result = llm_adapter.generate("system", "user", [fake_tool])
+    def _raise(*a, **k):
+        raise ValueError("unconvertible tool schema")
 
-    assert result.error is None
-    assert provider.calls == [None] * llm_adapter.MAX_AUTO_TURNS + ["submit_plan"]
+    monkeypatch.setattr(llm_adapter.agent_graph, "build_graph", _raise)
 
+    result = llm_adapter.generate("system", "user", [])
 
-def test_generate_returns_invalid_output_when_submit_plan_is_empty_and_no_tool_was_called(fake_provider):
-    """The LLM must ground every food in a search_food_tool/get_nutrition_tool call before
-    submitting -- a bare `foods: []` with no tool call anywhere beforehand means it never
-    tried, not that an empty plan is genuinely correct."""
-    submit_call = ToolCall(id="1", name="submit_plan", arguments={"foods": []})
-    fake_provider([[submit_call]])
-
-    result = llm_adapter.generate("system", "user", [fake_tool])
-
-    assert result == llm_adapter.GenerationResult(None, "invalid_output")
-
-
-def test_generate_returns_invalid_output_when_forced_turn_submits_empty_with_no_prior_tool_calls(fake_provider):
-    submit_call = ToolCall(id="1", name="submit_plan", arguments={"foods": []})
-    fake_provider([[]] * llm_adapter.MAX_AUTO_TURNS + [[submit_call]])
-
-    result = llm_adapter.generate("system", "user", [fake_tool])
-
-    assert result == llm_adapter.GenerationResult(None, "invalid_output")
-
-
-def test_generate_returns_invalid_output_when_forced_turn_still_skips_submit_plan(fake_provider):
-    fake_provider([[]] * llm_adapter.MAX_AUTO_TURNS + [[]])
-
-    result = llm_adapter.generate("system", "user", [fake_tool])
-
-    assert result == llm_adapter.GenerationResult(None, "invalid_output")
-
-
-def test_generate_returns_invalid_output_when_submit_plan_arguments_fail_validation(fake_provider):
-    bad_call = ToolCall(id="1", name="submit_plan", arguments={"foods": [{"description": "Apple"}]})
-    fake_provider([[bad_call]])
-
-    result = llm_adapter.generate("system", "user", [fake_tool])
-
-    assert result == llm_adapter.GenerationResult(None, "invalid_output")
-
-
-@pytest.mark.parametrize(
-    "exception, expected_error",
-    [
-        (LLMRateLimitedError(), "rate_limited"),
-        (LLMTimeoutError(), "timeout"),
-        (LLMInvalidOutputError(), "invalid_output"),
-        (RuntimeError("boom"), "api_error"),
-    ],
-)
-def test_generate_maps_provider_exceptions_to_error_codes(fake_provider, exception, expected_error):
-    fake_provider([exception])
-
-    result = llm_adapter.generate("system", "user", [fake_tool])
-
-    assert result == llm_adapter.GenerationResult(None, expected_error)
+    assert result == llm_adapter.GenerationResult(None, "api_error")

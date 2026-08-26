@@ -1,8 +1,10 @@
 requests
 python-dotenv
-google-generativeai
 groq
 langgraph
 langchain-core
+langchain-google-genai
+google-genai
+langchain-groq
 streamlit
 pytest

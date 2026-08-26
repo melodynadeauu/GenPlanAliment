@@ -1,25 +1,22 @@
 """The provider-agnostic agent loop: force a structured PlanPropose out of whichever
-LLM_PROVIDER is configured, executing data tools (search_food_tool/get_nutrition_tool)
-along the way. Never raises -- see GenerationResult.
+LLM_PROVIDER is configured, executing data tools along the way, by building and running
+the LangGraph graph in core.agent.graph. Never raises -- see GenerationResult.
 """
 import os
 from dataclasses import dataclass
-from typing import Callable
 
 from dotenv import load_dotenv
-from pydantic import ValidationError
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.tools import BaseTool
 
-from core.agent.errors import LLMInvalidOutputError, LLMRateLimitedError, LLMTimeoutError
+from core.agent import graph as agent_graph
 from core.agent.schemas import PlanPropose
-from core.agent.tool_schema import ToolCall, build_submit_plan_declaration, build_tool_declaration
 
-SUBMIT_PLAN_TOOL_NAME = "submit_plan"
-# Sized for Groq's openai/gpt-oss-120b, which calls exactly one tool per turn (search then
-# lookup, one food at a time) -- unlike Gemini, which batches many tool calls into a single
-# turn and typically finishes in 1. A lower budget starves the one-tool-per-turn pattern
-# before it's done gathering data, so the forced final turn errors instead of ever reaching
-# submit_plan (verified live against Groq on 2026-08-25).
-MAX_AUTO_TURNS = 15
+# How many LangGraph steps one generate() call is allowed: worst case is
+# agent_graph.MAX_AUTO_TURNS auto turns + 1 forced turn, each auto turn that calls a data
+# tool costing one extra "tools" step, plus one "finalize" step (~32 in the worst case).
+# 100 is a comfortable ceiling above that, not a tuned value.
+_RECURSION_LIMIT = 100
 
 
 def _require_provider(value: str | None) -> str:
@@ -55,90 +52,33 @@ class GenerationResult:
     target_kcal: float | None = None
 
 
-def generate(system_prompt: str, user_prompt: str, tools: list[Callable[..., dict]]) -> GenerationResult:
-    """Run the tool-calling loop against the configured provider until the LLM calls
-    submit_plan with a valid PlanPropose payload, up to MAX_AUTO_TURNS turns in auto mode.
-    If it still hasn't by then, one final call forces submit_plan via the provider's native
-    forced tool-choice, rather than giving up -- Decisions.docx's guardrail: a bounded
-    number of attempts before degrading, never an unbounded loop.
-    """
-    tools_by_name = {fn.__name__: fn for fn in tools}
-    tool_was_called = False
-    try:
-        declarations = [build_tool_declaration(fn) for fn in tools] + [build_submit_plan_declaration()]
-        state = _provider.start_conversation(system_prompt, user_prompt, declarations)
-    except Exception:
-        return GenerationResult(None, "api_error")
-
-    for _turn in range(MAX_AUTO_TURNS):
-        outcome = _call_provider(state, force_tool_name=None)
-        if isinstance(outcome, GenerationResult):
-            return outcome
-        state, tool_calls = outcome
-
-        submit_call = _find_call(tool_calls, SUBMIT_PLAN_TOOL_NAME)
-        if submit_call is not None:
-            return _finalize(submit_call, tool_was_called)
-
-        if tool_calls:
-            tool_was_called = True
-            state = _provider.append_tool_results(state, _execute(tool_calls, tools_by_name))
-
-    outcome = _call_provider(state, force_tool_name=SUBMIT_PLAN_TOOL_NAME)
-    if isinstance(outcome, GenerationResult):
-        return outcome
-    _state, tool_calls = outcome
-
-    submit_call = _find_call(tool_calls, SUBMIT_PLAN_TOOL_NAME)
-    if submit_call is None:
-        return GenerationResult(None, "invalid_output")
-    return _finalize(submit_call, tool_was_called)
-
-
-def _call_provider(state, force_tool_name: str | None):
-    """Run one provider turn, translating its canonical exceptions into a GenerationResult.
-    Returns (state, tool_calls) on success, or a GenerationResult on failure -- the caller
-    tells the two apart with isinstance().
+def generate(system_prompt: str, user_prompt: str, tools: list[BaseTool]) -> GenerationResult:
+    """Build the LangGraph graph (core.agent.graph.build_graph) for the configured
+    provider's chat model and run it to completion, translating its final state into a
+    GenerationResult.
     """
     try:
-        return _provider.call(state, force_tool_name)
-    except LLMRateLimitedError:
-        return GenerationResult(None, "rate_limited")
-    except LLMTimeoutError:
-        return GenerationResult(None, "timeout")
-    except LLMInvalidOutputError:
-        return GenerationResult(None, "invalid_output")
+        # get_llm() and build_graph() are inside this try too: get_llm() can raise
+        # (pydantic validation, missing env setup) and build_graph() calls bind_tools(),
+        # which can raise ValueError on an unconvertible tool schema. The pre-migration
+        # loop guarded model/tool-declaration construction the same way, not just the
+        # call loop, so generate()'s "never raises" contract has to cover this too.
+        compiled = agent_graph.build_graph(_provider.get_llm(), tools, _provider)
+        initial_state = {
+            "messages": [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
+            "turn": 0,
+            "tool_was_called": False,
+            "plan": None,
+            "error": None,
+        }
+        final_state = compiled.invoke(initial_state, config={"recursion_limit": _RECURSION_LIMIT})
     except Exception:
+        # Every LLM/tool failure core.agent.graph's own nodes can anticipate already
+        # lands in final_state["error"] below -- this catches what a node's try/except
+        # can't: LangGraph's own runtime raising between node executions (e.g.
+        # GraphRecursionError if a provider ever violated tool_choice badly enough to
+        # blow the turn budget). Keeps generate()'s "never raises" contract absolute.
         return GenerationResult(None, "api_error")
-
-
-def _find_call(tool_calls: list[ToolCall], name: str) -> ToolCall | None:
-    return next((tc for tc in tool_calls if tc.name == name), None)
-
-
-def _execute(tool_calls: list[ToolCall], tools_by_name: dict) -> list[tuple[ToolCall, dict]]:
-    results = []
-    for tool_call in tool_calls:
-        fn = tools_by_name.get(tool_call.name)
-        if fn is None:
-            result = {"error": "unknown_tool"}
-        else:
-            try:
-                result = fn(**tool_call.arguments)
-            except Exception:
-                result = {"error": "tool_execution_error"}
-        results.append((tool_call, result))
-    return results
-
-
-def _finalize(submit_call: ToolCall, tool_was_called: bool) -> GenerationResult:
-    try:
-        plan = PlanPropose(**submit_call.arguments)
-    except (ValidationError, TypeError):
-        return GenerationResult(None, "invalid_output")
-    # PlanPropose itself allows an empty foods list (see core.agent.schemas), but an empty
-    # plan is only genuinely valid if the LLM actually tried and found nothing to add --
-    # not if it skipped straight to submit_plan without ever calling a data tool.
-    if not plan.foods and not tool_was_called:
-        return GenerationResult(None, "invalid_output")
-    return GenerationResult(plan, None)
+    if final_state["error"]:
+        return GenerationResult(None, final_state["error"])
+    return GenerationResult(final_state["plan"], None)

@@ -3,14 +3,27 @@ kcal-enriched dict ui.components.meal_plan / totals_row / guardrails_bar expect
 (see fixtures.demo_plan.DEMO_PLAN for the target shape).
 
 get_nutrition_tool is monkeypatched on the plan_view module itself (not on
-core.tools.usda_tool, where it's defined) -- same pattern as llm_adapter._provider in
-test_llm_adapter.py: patch the name where it's looked up, not where it's declared.
+core.tools.usda_tool, where it's defined) -- same pattern as llm_adapter.agent_graph.build_graph
+in test_llm_adapter.py: patch the name where it's looked up, not where it's declared.
 """
 from core.agent import plan_generator, plan_view
 from core.agent.llm_adapter import GenerationResult
 from core.agent.schemas import PlanFood, PlanPropose
 from core.models import Profile
 from core.types import Goal, MealType
+
+
+class _FakeNutritionTool:
+    """Stands in for the StructuredTool get_nutrition_tool becomes after core.tools.usda_tool
+    adds @tool (see tests/test_usda_tool.py) -- plan_view.py now calls
+    get_nutrition_tool.invoke({"fdc_id": ...}), not get_nutrition_tool(fdc_id) directly."""
+
+    def __init__(self, fn):
+        self._fn = fn
+
+    def invoke(self, args):
+        return self._fn(args["fdc_id"])
+
 
 PROFILE = Profile(age_years=30, weight_kg=70.0, height_cm=175.0, goal=Goal.MAINTENANCE)
 
@@ -36,7 +49,7 @@ NUTRITION_BY_FDC_ID = {"1": APPLE_NUTRITION, "2": CHICKEN_NUTRITION, "3": RICE_N
 
 
 def test_build_plan_view_places_a_single_food_under_its_meal_with_computed_kcal(monkeypatch):
-    monkeypatch.setattr(plan_view, "get_nutrition_tool", lambda fdc_id: APPLE_NUTRITION)
+    monkeypatch.setattr(plan_view, "get_nutrition_tool", _FakeNutritionTool(lambda fdc_id: APPLE_NUTRITION))
     plan = PlanPropose(
         foods=[PlanFood(description="Apple, raw", fdc_id="1", meal=MealType.SNACK, grams=200.0)]
     )
@@ -59,7 +72,7 @@ def test_build_plan_view_places_a_single_food_under_its_meal_with_computed_kcal(
 
 
 def test_build_plan_view_orders_meals_breakfast_to_snack_regardless_of_input_order(monkeypatch):
-    monkeypatch.setattr(plan_view, "get_nutrition_tool", lambda fdc_id: NUTRITION_BY_FDC_ID[fdc_id])
+    monkeypatch.setattr(plan_view, "get_nutrition_tool", _FakeNutritionTool(lambda fdc_id: NUTRITION_BY_FDC_ID[fdc_id]))
     plan = PlanPropose(
         foods=[
             PlanFood(description="Apple, raw", fdc_id="1", meal=MealType.SNACK, grams=100.0),
@@ -78,7 +91,7 @@ def test_build_plan_view_orders_meals_breakfast_to_snack_regardless_of_input_ord
 
 
 def test_build_plan_view_sums_item_kcal_into_meal_and_total_kcal(monkeypatch):
-    monkeypatch.setattr(plan_view, "get_nutrition_tool", lambda fdc_id: NUTRITION_BY_FDC_ID[fdc_id])
+    monkeypatch.setattr(plan_view, "get_nutrition_tool", _FakeNutritionTool(lambda fdc_id: NUTRITION_BY_FDC_ID[fdc_id]))
     plan = PlanPropose(
         foods=[
             PlanFood(description="Chicken breast, grilled", fdc_id="2", meal=MealType.LUNCH, grams=100.0),
@@ -94,7 +107,7 @@ def test_build_plan_view_sums_item_kcal_into_meal_and_total_kcal(monkeypatch):
 
 
 def test_build_plan_view_falls_back_to_estimation_when_nutrition_lookup_fails(monkeypatch):
-    monkeypatch.setattr(plan_view, "get_nutrition_tool", lambda fdc_id: {"error": "not_found"})
+    monkeypatch.setattr(plan_view, "get_nutrition_tool", _FakeNutritionTool(lambda fdc_id: {"error": "not_found"}))
     plan = PlanPropose(
         foods=[PlanFood(description="Mystery food", fdc_id="999", meal=MealType.DINNER, grams=100.0)]
     )
@@ -109,7 +122,7 @@ def test_build_plan_view_falls_back_to_estimation_when_nutrition_lookup_fails(mo
 
 
 def test_build_plan_view_omits_meals_with_no_foods(monkeypatch):
-    monkeypatch.setattr(plan_view, "get_nutrition_tool", lambda fdc_id: APPLE_NUTRITION)
+    monkeypatch.setattr(plan_view, "get_nutrition_tool", _FakeNutritionTool(lambda fdc_id: APPLE_NUTRITION))
     plan = PlanPropose(
         foods=[PlanFood(description="Apple, raw", fdc_id="1", meal=MealType.BREAKFAST, grams=100.0)]
     )
@@ -144,7 +157,7 @@ def test_generate_daily_plan_view_returns_the_built_view_on_success(monkeypatch)
         "generate_daily_plan",
         lambda profile, day: GenerationResult(plan, None, target_kcal=2000.0),
     )
-    monkeypatch.setattr(plan_view, "get_nutrition_tool", lambda fdc_id: APPLE_NUTRITION)
+    monkeypatch.setattr(plan_view, "get_nutrition_tool", _FakeNutritionTool(lambda fdc_id: APPLE_NUTRITION))
 
     view, error = plan_view.generate_daily_plan_view(PROFILE, "monday")
 
