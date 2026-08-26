@@ -44,10 +44,15 @@ else:
 class GenerationResult:
     """Outcome of generate(): either `plan` on success, or `error` (one of "rate_limited",
     "timeout", "api_error", "invalid_output") on failure -- never both, never an exception.
+
+    target_kcal defaults to None here -- generate() itself doesn't know the calorie target,
+    it only drives the tool-calling loop. plan_generator.generate_daily_plan() fills it in
+    from the deterministic pipeline it already ran before calling generate().
     """
 
     plan: PlanPropose | None
     error: str | None
+    target_kcal: float | None = None
 
 
 def generate(system_prompt: str, user_prompt: str, tools: list[Callable[..., dict]]) -> GenerationResult:

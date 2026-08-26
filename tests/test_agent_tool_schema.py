@@ -65,6 +65,11 @@ def test_build_submit_plan_declaration_matches_plan_propose_shape():
                     "properties": {
                         "description": {"type": "string"},
                         "fdc_id": {"type": "string"},
+                        "meal": {
+                            "type": "string",
+                            "description": "The type of meal.",
+                            "enum": ["breakfast", "lunch", "dinner", "snack"],
+                        },
                         "grams": {
                             "type": "number",
                             "description": (
@@ -74,7 +79,7 @@ def test_build_submit_plan_declaration_matches_plan_propose_shape():
                             ),
                         },
                     },
-                    "required": ["description", "fdc_id", "grams"],
+                    "required": ["description", "fdc_id", "meal", "grams"],
                 },
             }
         },

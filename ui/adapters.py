@@ -24,7 +24,6 @@ _GOAL_LABEL_TO_GOAL = {
     "Maintien": Goal.MAINTENANCE,
 }
 
-
 def weekday_from_ui_day(day: str) -> str:
     """Translate a French UI day name (e.g. "mercredi") to the English day
     string plan_generator.generate_daily_plan expects (e.g. "wednesday").

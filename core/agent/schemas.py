@@ -2,6 +2,7 @@
 when proposing a meal plan, validated at the boundary instead of trusted as-is.
 """
 from pydantic import BaseModel, Field, field_validator
+import core.types as types
 
 
 class PlanFood(BaseModel):
@@ -9,6 +10,7 @@ class PlanFood(BaseModel):
 
     description: str
     fdc_id: str
+    meal: types.MealType = Field(description="Which meal this food belongs to.")
     grams: float = Field(
         description=(
             "The actual portion consumed, in grams. Independent of the 100g scale that "

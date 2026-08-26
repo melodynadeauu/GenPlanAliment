@@ -28,3 +28,11 @@ class Goal(str, Enum):
     WEIGHT_LOSS = "weight_loss"
     MAINTENANCE = "maintenance"
     MUSCLE_GAIN = "muscle_gain"
+
+class MealType(str, Enum):
+    """The type of meal."""
+
+    BREAKFAST = "breakfast"
+    LUNCH = "lunch"
+    DINNER = "dinner"
+    SNACK = "snack"

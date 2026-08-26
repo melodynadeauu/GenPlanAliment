@@ -55,7 +55,11 @@ def fake_provider(monkeypatch):
 
 def test_generate_finalizes_immediately_when_submit_plan_called_first_turn(fake_provider):
     submit_call = ToolCall(
-        id="1", name="submit_plan", arguments={"foods": [{"description": "Apple", "fdc_id": "1", "grams": 100.0}]}
+        id="1",
+        name="submit_plan",
+        arguments={
+            "foods": [{"description": "Apple", "fdc_id": "1", "meal": "snack", "grams": 100.0}]
+        },
     )
     fake_provider([[submit_call]])
 
@@ -70,7 +74,11 @@ def test_generate_executes_data_tool_then_finalizes(fake_provider):
     submit_call = ToolCall(
         id="2",
         name="submit_plan",
-        arguments={"foods": [{"description": "CHICKEN GRAVY", "fdc_id": "2620254", "grams": 150.0}]},
+        arguments={
+            "foods": [
+                {"description": "CHICKEN GRAVY", "fdc_id": "2620254", "meal": "lunch", "grams": 150.0}
+            ]
+        },
     )
     provider = fake_provider([[tool_call], [submit_call]])
 
@@ -116,7 +124,11 @@ def test_max_auto_turns_is_generous_enough_for_one_tool_call_per_turn_models():
 
 def test_generate_forces_submit_plan_after_max_auto_turns(fake_provider):
     submit_call = ToolCall(
-        id="1", name="submit_plan", arguments={"foods": [{"description": "Apple", "fdc_id": "1", "grams": 100.0}]}
+        id="1",
+        name="submit_plan",
+        arguments={
+            "foods": [{"description": "Apple", "fdc_id": "1", "meal": "snack", "grams": 100.0}]
+        },
     )
     provider = fake_provider([[]] * llm_adapter.MAX_AUTO_TURNS + [[submit_call]])
 

@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from core.agent import plan_generator
+from core.agent import plan_view
 from ui import adapters
 from ui.layout import configure_page
 from ui.state import (
@@ -40,8 +40,8 @@ def main() -> None:
     1. Configure page & CSS
     2. Initialize session state
     3. Render top bar (day selector + generate button)
-    4. If generate button clicked: call plan_generator.generate_daily_plan and store
-       the result (or show an error) in session state
+    4. If generate button clicked: call plan_view.generate_daily_plan_view and store
+       the view (or show an error) in session state
     5. Render sidebar (profile + preferences)
     6. Render main content (totals + meal plan + guardrails)
     """
@@ -62,13 +62,12 @@ def main() -> None:
         day = adapters.weekday_from_ui_day(selected_day)
 
         with st.spinner("Génération du plan…"):
-            result = plan_generator.generate_daily_plan(profile, day)
+            view, error = plan_view.generate_daily_plan_view(profile, day)
 
-        if result.error:
-            st.error(ERROR_MESSAGES.get(result.error, result.error))
+        if error:
+            st.error(ERROR_MESSAGES.get(error, error))
         else:
-            assert result.plan is not None
-            st.session_state[KEY_GENERATED_PLAN] = result.plan.model_dump()
+            st.session_state[KEY_GENERATED_PLAN] = view
 
     # Sidebar
     with st.sidebar:

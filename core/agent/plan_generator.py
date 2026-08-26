@@ -4,6 +4,8 @@ to llm_adapter.generate(). No error handling here -- llm_adapter.generate() alre
 never raises and encodes any failure in GenerationResult.error; main.py decides what
 to display for success vs. error.
 """
+import dataclasses
+
 from core.agent import llm_adapter, prompts
 from core.agent.llm_adapter import GenerationResult
 from core.models import ActivityEntry, Profile
@@ -41,4 +43,5 @@ def generate_daily_plan(profile: Profile, day: str) -> GenerationResult:
     system_prompt = prompts.build_system_prompt()
     user_prompt = prompts.build_user_prompt(target_kcal, activities, prefs["likes"], prefs["dislikes"])
 
-    return llm_adapter.generate(system_prompt, user_prompt, tools=[search_food_tool, get_nutrition_tool])
+    result = llm_adapter.generate(system_prompt, user_prompt, tools=[search_food_tool, get_nutrition_tool])
+    return dataclasses.replace(result, target_kcal=target_kcal)
