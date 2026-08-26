@@ -64,7 +64,7 @@ def generate(system_prompt: str, user_prompt: str, tools: list[BaseTool]) -> Gen
         # loop guarded model/tool-declaration construction the same way, not just the
         # call loop, so generate()'s "never raises" contract has to cover this too.
         compiled = agent_graph.build_graph(_provider.get_llm(), tools, _provider)
-        initial_state = {
+        initial_state: agent_graph.AgentState = {
             "messages": [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
             "turn": 0,
             "tool_was_called": False,

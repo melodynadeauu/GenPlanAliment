@@ -11,6 +11,7 @@ import os
 import groq
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
+from pydantic import SecretStr
 
 # Verified live against this account on 2026-08-25: llama-3.3-70b-versatile no longer
 # exists on this account; openai/gpt-oss-120b is the closest available equivalent with
@@ -54,4 +55,4 @@ def get_llm() -> ChatGroq:
     what classify_exception() recognizes is core.agent.graph's job (shared across
     providers, bounded, and sleep-mockable in tests), not this SDK's own opaque policy.
     """
-    return ChatGroq(model=GROQ_MODEL, api_key=GROQ_API_KEY, max_retries=0)
+    return ChatGroq(model=GROQ_MODEL, api_key=SecretStr(GROQ_API_KEY), max_retries=0)
