@@ -14,7 +14,12 @@ from core.agent.schemas import PlanPropose
 from core.agent.tool_schema import ToolCall, build_submit_plan_declaration, build_tool_declaration
 
 SUBMIT_PLAN_TOOL_NAME = "submit_plan"
-MAX_AUTO_TURNS = 5
+# Sized for Groq's openai/gpt-oss-120b, which calls exactly one tool per turn (search then
+# lookup, one food at a time) -- unlike Gemini, which batches many tool calls into a single
+# turn and typically finishes in 1. A lower budget starves the one-tool-per-turn pattern
+# before it's done gathering data, so the forced final turn errors instead of ever reaching
+# submit_plan (verified live against Groq on 2026-08-25).
+MAX_AUTO_TURNS = 15
 
 
 def _require_provider(value: str | None) -> str:
@@ -53,6 +58,7 @@ def generate(system_prompt: str, user_prompt: str, tools: list[Callable[..., dic
     number of attempts before degrading, never an unbounded loop.
     """
     tools_by_name = {fn.__name__: fn for fn in tools}
+    tool_was_called = False
     try:
         declarations = [build_tool_declaration(fn) for fn in tools] + [build_submit_plan_declaration()]
         state = _provider.start_conversation(system_prompt, user_prompt, declarations)
@@ -67,9 +73,10 @@ def generate(system_prompt: str, user_prompt: str, tools: list[Callable[..., dic
 
         submit_call = _find_call(tool_calls, SUBMIT_PLAN_TOOL_NAME)
         if submit_call is not None:
-            return _finalize(submit_call)
+            return _finalize(submit_call, tool_was_called)
 
         if tool_calls:
+            tool_was_called = True
             state = _provider.append_tool_results(state, _execute(tool_calls, tools_by_name))
 
     outcome = _call_provider(state, force_tool_name=SUBMIT_PLAN_TOOL_NAME)
@@ -80,7 +87,7 @@ def generate(system_prompt: str, user_prompt: str, tools: list[Callable[..., dic
     submit_call = _find_call(tool_calls, SUBMIT_PLAN_TOOL_NAME)
     if submit_call is None:
         return GenerationResult(None, "invalid_output")
-    return _finalize(submit_call)
+    return _finalize(submit_call, tool_was_called)
 
 
 def _call_provider(state, force_tool_name: str | None):
@@ -119,9 +126,14 @@ def _execute(tool_calls: list[ToolCall], tools_by_name: dict) -> list[tuple[Tool
     return results
 
 
-def _finalize(submit_call: ToolCall) -> GenerationResult:
+def _finalize(submit_call: ToolCall, tool_was_called: bool) -> GenerationResult:
     try:
         plan = PlanPropose(**submit_call.arguments)
     except (ValidationError, TypeError):
+        return GenerationResult(None, "invalid_output")
+    # PlanPropose itself allows an empty foods list (see core.agent.schemas), but an empty
+    # plan is only genuinely valid if the LLM actually tried and found nothing to add --
+    # not if it skipped straight to submit_plan without ever calling a data tool.
+    if not plan.foods and not tool_was_called:
         return GenerationResult(None, "invalid_output")
     return GenerationResult(plan, None)

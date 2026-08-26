@@ -45,3 +45,12 @@ def test_plan_food_leaves_string_fdc_id_unchanged():
     food = PlanFood(description="x", fdc_id="2620254", grams=100.0)
 
     assert food.fdc_id == "2620254"
+
+
+def test_plan_food_coerces_float_fdc_id_to_str():
+    """Verified live against gemini-3.5-flash-lite on 2026-08-25: it echoes fdc_id back as
+    a float (171287.0), not an int -- the ".0" must be dropped, not just stringified."""
+    food = PlanFood(description="x", fdc_id=171287.0, grams=100.0)  # pyright: ignore[reportArgumentType]
+
+    assert food.fdc_id == "171287"
+    assert isinstance(food.fdc_id, str)

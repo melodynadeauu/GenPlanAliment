@@ -3,6 +3,7 @@
 """
 import os
 import time
+from typing import Any
 
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -12,10 +13,14 @@ from google.generativeai.types import FunctionDeclaration, Tool
 from core.agent.errors import LLMRateLimitedError, LLMTimeoutError
 from core.agent.tool_schema import ToolCall, ToolDeclaration
 
-# Verified live against this SDK/account on 2026-08-25: Decisions.docx's "Gemini 2.5 Flash"
-# 404s with "no longer available to new users. Please update your code to use
-# models/gemini-3.6-flash" -- that replacement is what's used here.
-GEMINI_MODEL = "gemini-3.6-flash"
+
+# Verified live against this SDK/account on 2026-08-25: "gemini-2-flash" doesn't exist, and
+# every Gemini 2.x flash model on this account is dead -- gemini-2.5-flash and
+# gemini-2.5-flash-lite both 404 with "no longer available to new users", redirecting to
+# gemini-3.6-flash (rate-limited) and gemini-3.5-flash-lite respectively. gemini-3.5-flash-lite
+# is a genuinely separate model from gemini-3.6-flash (confirmed responding live), so it's used
+# here as the working fallback while gemini-3.6-flash's quota is exhausted.
+GEMINI_MODEL = "gemini-3.5-flash-lite"
 
 RETRY_DELAYS_SECONDS = [1, 2]
 MAX_RETRIES = 2
@@ -39,13 +44,18 @@ def _require_api_key(value: str | None) -> str:
 
 load_dotenv()
 GEMINI_API_KEY = _require_api_key(os.getenv("GEMINI_API_KEY"))
-genai.configure(api_key=GEMINI_API_KEY)
+# The deprecated google-generativeai package re-exports these via plain `from x import y`
+# with no `__all__`, so pyright treats them as private even though they work fine at runtime
+# (verified live) -- see google/generativeai/__init__.py.
+genai.configure(api_key=GEMINI_API_KEY)  # pyright: ignore[reportPrivateImportUsage]
 
 
-def _to_python(value):
+def _to_python(value: Any) -> Any:
     """Recursively convert proto-plus MapComposite/RepeatedComposite (what this SDK returns
     for function_call.args) into plain dict/list. Verified live: a nested submit_plan call
     (foods: [...]) comes back with nested MapComposite/RepeatedComposite, not plain Python.
+    Untyped in and out on purpose -- it genuinely returns dict, list, or a scalar depending on
+    the branch, and `part.function_call.args` itself has no useful static type to start from.
     """
     if hasattr(value, "items"):
         return {key: _to_python(item) for key, item in value.items()}
@@ -72,7 +82,9 @@ def start_conversation(system_prompt: str, user_prompt: str, tool_declarations: 
             ]
         )
     ]
-    model = genai.GenerativeModel(GEMINI_MODEL, system_instruction=system_prompt, tools=tools)
+    model = genai.GenerativeModel(  # pyright: ignore[reportPrivateImportUsage]
+        GEMINI_MODEL, system_instruction=system_prompt, tools=tools
+    )
     return {"model": model, "messages": [{"role": "user", "parts": [user_prompt]}]}
 
 

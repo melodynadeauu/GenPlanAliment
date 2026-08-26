@@ -104,14 +104,47 @@ def test_generate_feeds_back_tool_execution_error_and_continues(fake_provider):
     assert provider.appended_results == [[(broken_call, {"error": "tool_execution_error"})]]
 
 
+def test_max_auto_turns_is_generous_enough_for_one_tool_call_per_turn_models():
+    """Verified live against Groq's openai/gpt-oss-120b (2026-08-25): unlike Gemini, which
+    batches many tool calls into a single turn, it calls exactly one tool per turn --
+    search then lookup, one food at a time. A budget only large enough for Gemini's
+    calling pattern starves it before it finishes gathering data, so the forced final
+    turn fails with a tool_choice mismatch (core.agent.providers.groq raises
+    LLMInvalidOutputError) instead of ever reaching submit_plan."""
+    assert llm_adapter.MAX_AUTO_TURNS >= 15
+
+
 def test_generate_forces_submit_plan_after_max_auto_turns(fake_provider):
-    submit_call = ToolCall(id="1", name="submit_plan", arguments={"foods": []})
+    submit_call = ToolCall(
+        id="1", name="submit_plan", arguments={"foods": [{"description": "Apple", "fdc_id": "1", "grams": 100.0}]}
+    )
     provider = fake_provider([[]] * llm_adapter.MAX_AUTO_TURNS + [[submit_call]])
 
     result = llm_adapter.generate("system", "user", [fake_tool])
 
     assert result.error is None
     assert provider.calls == [None] * llm_adapter.MAX_AUTO_TURNS + ["submit_plan"]
+
+
+def test_generate_returns_invalid_output_when_submit_plan_is_empty_and_no_tool_was_called(fake_provider):
+    """The LLM must ground every food in a search_food_tool/get_nutrition_tool call before
+    submitting -- a bare `foods: []` with no tool call anywhere beforehand means it never
+    tried, not that an empty plan is genuinely correct."""
+    submit_call = ToolCall(id="1", name="submit_plan", arguments={"foods": []})
+    fake_provider([[submit_call]])
+
+    result = llm_adapter.generate("system", "user", [fake_tool])
+
+    assert result == llm_adapter.GenerationResult(None, "invalid_output")
+
+
+def test_generate_returns_invalid_output_when_forced_turn_submits_empty_with_no_prior_tool_calls(fake_provider):
+    submit_call = ToolCall(id="1", name="submit_plan", arguments={"foods": []})
+    fake_provider([[]] * llm_adapter.MAX_AUTO_TURNS + [[submit_call]])
+
+    result = llm_adapter.generate("system", "user", [fake_tool])
+
+    assert result == llm_adapter.GenerationResult(None, "invalid_output")
 
 
 def test_generate_returns_invalid_output_when_forced_turn_still_skips_submit_plan(fake_provider):
