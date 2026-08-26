@@ -45,17 +45,28 @@ class GenerationResult:
     target_kcal defaults to None here -- generate() itself doesn't know the calorie target,
     it only drives the tool-calling loop. plan_generator.generate_daily_plan() fills it in
     from the deterministic pipeline it already ran before calling generate().
+
+    degraded is True when the graph exhausted its guardrail-violation retries (G7) and
+    returned the last attempted plan anyway, with the violation visible via plan_view's
+    guardrails list rather than silently hidden.
     """
 
     plan: PlanPropose | None
     error: str | None
     target_kcal: float | None = None
+    degraded: bool = False
 
 
-def generate(system_prompt: str, user_prompt: str, tools: list[BaseTool]) -> GenerationResult:
+def generate(
+    system_prompt: str,
+    user_prompt: str,
+    tools: list[BaseTool],
+    target_kcal: float,
+    dislikes: list[str],
+) -> GenerationResult:
     """Build the LangGraph graph (core.agent.graph.build_graph) for the configured
     provider's chat model and run it to completion, translating its final state into a
-    GenerationResult.
+    GenerationResult. `target_kcal`/`dislikes` feed the graph's G1/G2 guardrail checks.
     """
     try:
         # get_llm() and build_graph() are inside this try too: get_llm() can raise
@@ -70,6 +81,12 @@ def generate(system_prompt: str, user_prompt: str, tools: list[BaseTool]) -> Gen
             "tool_was_called": False,
             "plan": None,
             "error": None,
+            "target_kcal": target_kcal,
+            "dislikes": dislikes,
+            "resolved_total_kcal": None,
+            "attempt": 1,
+            "degraded": False,
+            "violations": [],
         }
         final_state = compiled.invoke(initial_state, config={"recursion_limit": _RECURSION_LIMIT})
     except Exception:
@@ -81,4 +98,4 @@ def generate(system_prompt: str, user_prompt: str, tools: list[BaseTool]) -> Gen
         return GenerationResult(None, "api_error")
     if final_state["error"]:
         return GenerationResult(None, final_state["error"])
-    return GenerationResult(final_state["plan"], None)
+    return GenerationResult(final_state["plan"], None, degraded=final_state["degraded"])

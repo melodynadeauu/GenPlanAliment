@@ -46,5 +46,11 @@ def generate_daily_plan(profile: Profile, day: str) -> GenerationResult:
     system_prompt = prompts.build_system_prompt()
     user_prompt = prompts.build_user_prompt(target_kcal, activities, likes, dislikes)
 
-    result = llm_adapter.generate(system_prompt, user_prompt, tools=[search_food_tool, get_nutrition_tool])
+    result = llm_adapter.generate(
+        system_prompt,
+        user_prompt,
+        tools=[search_food_tool, get_nutrition_tool],
+        target_kcal=target_kcal,
+        dislikes=dislikes,
+    )
     return dataclasses.replace(result, target_kcal=target_kcal)

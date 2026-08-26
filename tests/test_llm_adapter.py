@@ -32,26 +32,35 @@ def fake_build_graph(monkeypatch):
 
 def test_generate_returns_the_plan_from_the_final_state_on_success(fake_build_graph):
     plan = PlanPropose(foods=[PlanFood(description="Apple", fdc_id="1", meal="snack", grams=100.0)])
-    fake_build_graph({"plan": plan, "error": None})
+    fake_build_graph({"plan": plan, "error": None, "degraded": False})
 
-    result = llm_adapter.generate("system", "user", [])
+    result = llm_adapter.generate("system", "user", [], target_kcal=100.0, dislikes=[])
 
     assert result == llm_adapter.GenerationResult(plan, None)
 
 
 @pytest.mark.parametrize("error", ["rate_limited", "timeout", "api_error", "invalid_output"])
 def test_generate_returns_the_error_from_the_final_state(fake_build_graph, error):
-    fake_build_graph({"plan": None, "error": error})
+    fake_build_graph({"plan": None, "error": error, "degraded": False})
 
-    result = llm_adapter.generate("system", "user", [])
+    result = llm_adapter.generate("system", "user", [], target_kcal=100.0, dislikes=[])
 
     assert result == llm_adapter.GenerationResult(None, error)
 
 
-def test_generate_builds_the_initial_state_with_system_and_user_messages(fake_build_graph):
-    fake_graph = fake_build_graph({"plan": None, "error": "timeout"})
+def test_generate_returns_degraded_true_when_the_graph_exhausted_its_retries(fake_build_graph):
+    plan = PlanPropose(foods=[PlanFood(description="Apple", fdc_id="1", meal="snack", grams=100.0)])
+    fake_build_graph({"plan": plan, "error": None, "degraded": True})
 
-    llm_adapter.generate("sys prompt", "user prompt", [])
+    result = llm_adapter.generate("system", "user", [], target_kcal=100.0, dislikes=[])
+
+    assert result == llm_adapter.GenerationResult(plan, None, degraded=True)
+
+
+def test_generate_builds_the_initial_state_with_system_and_user_messages(fake_build_graph):
+    fake_graph = fake_build_graph({"plan": None, "error": "timeout", "degraded": False})
+
+    llm_adapter.generate("sys prompt", "user prompt", [], target_kcal=100.0, dislikes=["mushrooms"])
 
     initial_state, config = fake_graph.invoke_calls[0]
     assert isinstance(initial_state["messages"][0], SystemMessage)
@@ -62,6 +71,10 @@ def test_generate_builds_the_initial_state_with_system_and_user_messages(fake_bu
     assert initial_state["tool_was_called"] is False
     assert initial_state["plan"] is None
     assert initial_state["error"] is None
+    assert initial_state["target_kcal"] == 100.0
+    assert initial_state["dislikes"] == ["mushrooms"]
+    assert initial_state["attempt"] == 1
+    assert initial_state["degraded"] is False
     assert config["recursion_limit"] >= 50
 
 
@@ -79,7 +92,7 @@ def test_generate_returns_api_error_if_the_graph_itself_raises(monkeypatch):
 
     monkeypatch.setattr(llm_adapter.agent_graph, "build_graph", lambda *a, **k: RaisingGraph())
 
-    result = llm_adapter.generate("system", "user", [])
+    result = llm_adapter.generate("system", "user", [], target_kcal=100.0, dislikes=[])
 
     assert result == llm_adapter.GenerationResult(None, "api_error")
 
@@ -96,6 +109,6 @@ def test_generate_returns_api_error_if_build_graph_itself_raises(monkeypatch):
 
     monkeypatch.setattr(llm_adapter.agent_graph, "build_graph", _raise)
 
-    result = llm_adapter.generate("system", "user", [])
+    result = llm_adapter.generate("system", "user", [], target_kcal=100.0, dislikes=[])
 
     assert result == llm_adapter.GenerationResult(None, "api_error")

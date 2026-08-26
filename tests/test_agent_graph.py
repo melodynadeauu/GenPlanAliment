@@ -78,13 +78,43 @@ def no_real_sleep(monkeypatch):
     return sleeps
 
 
-def _initial_state():
+class _FakeNutritionTool:
+    """Stands in for core.tools.usda_tool.get_nutrition_tool: only .invoke() matters
+    to resolve_recompute_node. get_nutrition_tool is a frozen pydantic StructuredTool,
+    so its .invoke can't be monkeypatched in place -- the whole object is replaced
+    instead (see fake_nutrition_lookup below).
+    """
+
+    @staticmethod
+    def invoke(args):
+        return {"macros_per_100g": {"kcal": 100.0, "protein_g": 1.0, "fat_g": 0.0, "carbs_g": 0.0}}
+
+
+@pytest.fixture(autouse=True)
+def fake_nutrition_lookup(monkeypatch):
+    """resolve_recompute_node calls the real get_nutrition_tool -- fake it here so no
+    test in this file ever hits the network. 100 kcal/100g means a 100g food resolves
+    to exactly 100 kcal, matching APPLE's grams below.
+    """
+    monkeypatch.setattr(agent_graph, "get_nutrition_tool", _FakeNutritionTool())
+
+
+def _initial_state(target_kcal=0.0, dislikes=None):
+    """target_kcal defaults to 0 (falsy), which skips the G1 conformity check entirely
+    -- most pre-existing tests in this file care about the tool-calling loop, not the
+    calorie/dislikes guardrails, so they'd otherwise need a food-count-matching target."""
     return {
         "messages": [SystemMessage(content="system"), HumanMessage(content="user")],
         "turn": 0,
         "tool_was_called": False,
         "plan": None,
         "error": None,
+        "target_kcal": target_kcal,
+        "dislikes": dislikes or [],
+        "resolved_total_kcal": None,
+        "attempt": 1,
+        "degraded": False,
+        "violations": [],
     }
 
 
@@ -272,3 +302,55 @@ def test_reports_api_error_for_an_unclassified_exception_without_retrying(no_rea
 
     assert result["error"] == "api_error"
     assert no_real_sleep == []
+
+
+# --- G1/G2/G3/G7: resolve_recompute / validate_guardrails / retry / degrade ---
+
+
+def test_conforming_plan_reaches_finalize_without_retry():
+    """APPLE is 100g and fake_nutrition_lookup resolves 100 kcal/100g -> total 100 kcal,
+    matching target_kcal=100 exactly. No dislikes. Must finalize on the first attempt."""
+    model = FakeChatModel([ai_message([submit_call("1", [APPLE])])])
+    compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
+
+    result = compiled.invoke(_initial_state(target_kcal=100.0), config={"recursion_limit": 50})
+
+    assert result["error"] is None
+    assert result["degraded"] is False
+    assert result["attempt"] == 1
+    assert result["plan"].foods[0].description == "Apple"
+
+
+def test_disliked_food_triggers_one_retry_then_succeeds():
+    """First proposal is on the dislikes list; second (after the injected violation
+    reason) isn't. Must finalize on attempt 2, not degrade."""
+    bad = {"description": "Apple", "fdc_id": "1", "meal": "snack", "grams": 100.0}
+    good = {"description": "Pear", "fdc_id": "2", "meal": "snack", "grams": 100.0}
+    model = FakeChatModel([ai_message([submit_call("1", [bad])]), ai_message([submit_call("2", [good])])])
+    compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
+
+    result = compiled.invoke(
+        _initial_state(target_kcal=100.0, dislikes=["apple"]), config={"recursion_limit": 50}
+    )
+
+    assert result["error"] is None
+    assert result["degraded"] is False
+    assert result["attempt"] == 2
+    assert result["plan"].foods[0].description == "Pear"
+
+
+def test_exhausted_retries_degrades_instead_of_looping_forever():
+    """Every attempt keeps violating -- after MAX_ATTEMPTS, degrade rather than loop
+    forever or silently show a non-conforming plan."""
+    bad = {"description": "Apple", "fdc_id": "1", "meal": "snack", "grams": 100.0}
+    model = FakeChatModel([ai_message([submit_call(str(i), [bad])]) for i in range(agent_graph.MAX_ATTEMPTS)])
+    compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
+
+    result = compiled.invoke(
+        _initial_state(target_kcal=100.0, dislikes=["apple"]), config={"recursion_limit": 50}
+    )
+
+    assert result["error"] is None
+    assert result["degraded"] is True
+    assert result["plan"] is not None  # degraded still returns the last plan, with a warning
+    assert result["attempt"] == agent_graph.MAX_ATTEMPTS
