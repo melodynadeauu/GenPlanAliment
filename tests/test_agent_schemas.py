@@ -32,3 +32,16 @@ def test_plan_propose_holds_a_list_of_plan_food():
 
 def test_plan_propose_accepts_empty_food_list():
     assert PlanPropose(foods=[]).foods == []
+
+
+def test_plan_food_coerces_int_fdc_id_to_str():
+    food = PlanFood(description="x", fdc_id=2620254, grams=100.0)  # pyright: ignore[reportArgumentType]
+
+    assert food.fdc_id == "2620254"
+    assert isinstance(food.fdc_id, str)
+
+
+def test_plan_food_leaves_string_fdc_id_unchanged():
+    food = PlanFood(description="x", fdc_id="2620254", grams=100.0)
+
+    assert food.fdc_id == "2620254"

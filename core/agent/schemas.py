@@ -1,7 +1,7 @@
 """Pydantic schemas for the agent's structured output: the shape an LLM must fill in
 when proposing a meal plan, validated at the boundary instead of trusted as-is.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PlanFood(BaseModel):
@@ -16,6 +16,15 @@ class PlanFood(BaseModel):
             "not itself a unit to convert, it's the multiplier applied to that per-100g figure."
         )
     )
+
+    @field_validator("fdc_id", mode="before")
+    @classmethod
+    def _coerce_fdc_id_to_str(cls, value):
+        """Defend against the LLM echoing USDA's integer fdcId (see data/usda/client.py)
+        back unquoted -- pydantic v2 doesn't coerce int -> str by default."""
+        if isinstance(value, int):
+            return str(value)
+        return value
 
 
 class PlanPropose(BaseModel):
