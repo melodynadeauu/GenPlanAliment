@@ -3,6 +3,11 @@
 FDC nutrient numbers, e.g. from https://fdc.nal.usda.gov/ (the `nutrient.number`
 field of the API is a string, not an int -- constants below are strings so the
 comparison against parsed JSON matches).
+
+Lives under data.usda (not core.nutrition) because it's a parser for USDA's specific
+response shape, not a nutrition domain calculation -- and data.usda.cache/client need
+MACRO_FIELDS themselves, to tell a cached entry apart from one written before a field
+was added here (see data.usda.client.get_nutrition's self-healing cache).
 """
 import warnings
 
@@ -11,7 +16,9 @@ PROTEIN_G = "203"
 FAT_G = "204"
 CARBS_G = "205"
 
-_MACRO_FIELDS = {
+# Public (no leading underscore): data.usda.cache/client compare a cached entry's keys
+# against MACRO_FIELDS.values() to detect a row cached before a field was added here.
+MACRO_FIELDS = {
     ENERGY_KCAL: "kcal",
     PROTEIN_G: "protein_g",
     FAT_G: "fat_g",
@@ -33,17 +40,17 @@ def extract_macros(food_nutrients: list[dict]) -> dict:
     Any of the four missing from `food_nutrients` defaults to 0.0 and emits a
     warnings.warn instead of raising.
     """
-    macros = {field: 0.0 for field in _MACRO_FIELDS.values()}
+    macros = {field: 0.0 for field in MACRO_FIELDS.values()}
     found = set()
 
     for entry in food_nutrients:
         number = entry.get("nutrient", {}).get("number")
-        field = _MACRO_FIELDS.get(number)
+        field = MACRO_FIELDS.get(number)
         if field is not None:
             macros[field] = float(entry["amount"])
             found.add(field)
 
-    for number, field in _MACRO_FIELDS.items():
+    for number, field in MACRO_FIELDS.items():
         if field not in found:
             warnings.warn(f"USDA nutrient {number} ({field}) missing from foodNutrients; defaulting to 0.0")
 

@@ -6,7 +6,6 @@ Neither ever raises: on failure they return {"error": <code>}, one of
 data.usda.client's four error codes (not_found, rate_limited, timeout,
 api_error).
 """
-from core.nutrition.usda_nutrients import extract_macros
 from data.usda import client as usda_client
 
 
@@ -23,17 +22,12 @@ def search_food_tool(query: str) -> dict:
 
 def get_nutrition_tool(fdc_id: str) -> dict:
     """Look up nutrition for `fdc_id`. Success: {"fdc_id", "description",
-    "macros_per_100g"} -- the raw foodNutrients list is never returned to the
-    LLM, only the extracted macros (see core.nutrition.usda_nutrients).
+    "macros_per_100g"} -- client.py already extracts and caches only these macros
+    (see data.usda.nutrients), so this is a passthrough, not a transform.
     Failure: {"error": <code>}.
     """
     result = usda_client.get_nutrition(fdc_id, usda_client.USDA_API_KEY)
     if result.error is not None:
         return {"error": result.error}
-    food = result.food
-    assert isinstance(food, dict)
-    return {
-        "fdc_id": food["fdc_id"],
-        "description": food["description"],
-        "macros_per_100g": extract_macros(food["foodNutrients"]),
-    }
+    assert isinstance(result.food, dict)
+    return result.food

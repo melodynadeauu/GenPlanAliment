@@ -6,7 +6,6 @@ from core.nutrition.energy import (
     compute_tdee,
 )
 from core.nutrition.targets import compute_target_kcal
-from core.nutrition.usda_nutrients import extract_macros
 
 __all__ = [
     "compute_bmr",
@@ -14,5 +13,4 @@ __all__ = [
     "compute_sedentary_base",
     "compute_target_kcal",
     "compute_tdee",
-    "extract_macros",
 ]

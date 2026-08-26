@@ -1,9 +1,9 @@
-"""Tests for core.nutrition.usda_nutrients."""
+"""Tests for data.usda.nutrients."""
 import warnings
 
 import pytest
 
-from core.nutrition import usda_nutrients
+from data.usda import nutrients as usda_nutrients
 
 # Real /food/2620254 response (CHICKEN GRAVY, CHICKEN, Branded), foodNutrients only.
 # Each entry nests the nutrient number as a string under "nutrient", with "amount"

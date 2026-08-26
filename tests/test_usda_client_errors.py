@@ -12,9 +12,9 @@ from data.usda import client as usda_client
 
 
 @pytest.fixture(autouse=True)
-def isolated_cache_path(tmp_path, monkeypatch):
-    """Redirect CACHE_PATH to a throwaway file so tests never touch the real cache."""
-    monkeypatch.setattr(usda_cache, "CACHE_PATH", tmp_path / "usda_cache.json")
+def isolated_db_path(tmp_path, monkeypatch):
+    """Redirect DB_PATH to a throwaway file so tests never touch the real cache."""
+    monkeypatch.setattr(usda_cache, "DB_PATH", tmp_path / "usda_cache.db")
 
 
 @pytest.fixture(autouse=True)
@@ -199,8 +199,7 @@ def test_malformed_json_returns_api_error_immediately(monkeypatch, no_real_sleep
     assert len(calls) == 1
     assert no_real_sleep == []
 
-    cache = usda_cache.load_cache()
-    assert usda_cache.get_cached_search(cache, "apple") is None
+    assert usda_cache.get_cached_search("apple") is None
 
 
 # --- Never raises ---

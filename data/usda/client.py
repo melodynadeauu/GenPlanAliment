@@ -10,10 +10,11 @@ from dotenv import load_dotenv
 from data.usda.cache import (
     get_cached_nutrition,
     get_cached_search,
-    load_cache,
-    set_cached_nutrition,
+    set_cached_nutrition_found,
+    set_cached_nutrition_not_found,
     set_cached_search,
 )
+from data.usda.nutrients import MACRO_FIELDS, extract_macros
 
 SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
 FOOD_URL = "https://api.nal.usda.gov/fdc/v1/food"
@@ -111,8 +112,7 @@ def _fetch_json(url: str, params: dict) -> tuple[dict | None, str | None]:
 
 def search_food(query: str, api_key: str) -> FoodLookupResult:
     """Search USDA foods for `query`, via the cache first."""
-    cache = load_cache()
-    cached = get_cached_search(cache, query)
+    cached = get_cached_search(query)
 
     if cached is not None:
         return FoodLookupResult(cached, None) if cached else FoodLookupResult(None, "not_found")
@@ -126,31 +126,44 @@ def search_food(query: str, api_key: str) -> FoodLookupResult:
         {"fdc_id": food["fdcId"], "description": food["description"]}
         for food in data.get("foods", [])
     ]
-    set_cached_search(cache, query, results)
+    set_cached_search(query, results)
 
     return FoodLookupResult(results, None) if results else FoodLookupResult(None, "not_found")
 
 
 def get_nutrition(fdc_id: str, api_key: str) -> FoodLookupResult:
-    """fdc_id, description and full foodNutrients entries for `fdc_id`, via the cache first."""
-    cache = load_cache()
-    cached = get_cached_nutrition(cache, fdc_id)
+    """fdc_id, description and macros_per_100g for `fdc_id`, via the cache first.
+
+    Only the four macros extract_macros knows about are cached, not USDA's full
+    foodNutrients panel (see data.usda.nutrients). A row cached before MACRO_FIELDS grew
+    a new entry is missing that field and is treated as stale here -- one live call
+    backfills it with the current full set, so extending MACRO_FIELDS self-heals the
+    cache over time instead of requiring a manual wipe.
+    """
+    cached = get_cached_nutrition(fdc_id)
 
     if cached is not None:
-        if cached["foodNutrients"]:
-            return FoodLookupResult(cached, None)
-        return FoodLookupResult(None, "not_found")
+        if not cached["found"]:
+            return FoodLookupResult(None, "not_found")
+        if set(MACRO_FIELDS.values()) <= cached["food"]["macros_per_100g"].keys():
+            return FoodLookupResult(cached["food"], None)
+        # else: cached before a macro field existed -- fall through and refresh it live
 
     data, error = _fetch_json(f"{FOOD_URL}/{fdc_id}", {"api_key": api_key})
     if error is not None:
         return FoodLookupResult(None, error)
     assert data is not None
 
+    food_nutrients = data.get("foodNutrients", [])
+    if not food_nutrients:
+        set_cached_nutrition_not_found(fdc_id)
+        return FoodLookupResult(None, "not_found")
+
     food = {
         "fdc_id": data.get("fdcId"),
         "description": data.get("description"),
-        "foodNutrients": data.get("foodNutrients", []),
+        "macros_per_100g": extract_macros(food_nutrients),
     }
-    set_cached_nutrition(cache, fdc_id, food)
+    set_cached_nutrition_found(fdc_id, food)
 
-    return FoodLookupResult(food, None) if food["foodNutrients"] else FoodLookupResult(None, "not_found")
+    return FoodLookupResult(food, None)

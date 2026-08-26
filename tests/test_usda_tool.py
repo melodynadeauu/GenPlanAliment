@@ -61,16 +61,13 @@ def test_search_food_tool_returns_error_dict_never_raises(monkeypatch, error_cod
 CHICKEN_GRAVY_FOOD = {
     "fdc_id": 2620254,
     "description": "CHICKEN GRAVY, CHICKEN",
-    "foodNutrients": [
-        {"nutrient": {"number": "208", "name": "Energy"}, "amount": 65.0},
-        {"nutrient": {"number": "203", "name": "Protein"}, "amount": 1.61},
-        {"nutrient": {"number": "204", "name": "Total lipid (fat)"}, "amount": 4.03},
-        {"nutrient": {"number": "205", "name": "Carbohydrate, by difference"}, "amount": 4.84},
-    ],
+    "macros_per_100g": {"kcal": 65.0, "protein_g": 1.61, "fat_g": 4.03, "carbs_g": 4.84},
 }
 
 
-def test_get_nutrition_tool_returns_macros_not_raw_food_nutrients(monkeypatch):
+def test_get_nutrition_tool_passes_through_the_client_food_dict_unchanged(monkeypatch):
+    """client.get_nutrition already extracts/caches only the four macros (see
+    data.usda.nutrients) -- get_nutrition_tool is a passthrough, not a transform."""
     monkeypatch.setattr(
         usda_client,
         "get_nutrition",
@@ -79,12 +76,7 @@ def test_get_nutrition_tool_returns_macros_not_raw_food_nutrients(monkeypatch):
 
     result = usda_tool.get_nutrition_tool("2620254")
 
-    assert result == {
-        "fdc_id": 2620254,
-        "description": "CHICKEN GRAVY, CHICKEN",
-        "macros_per_100g": {"kcal": 65.0, "protein_g": 1.61, "fat_g": 4.03, "carbs_g": 4.84},
-    }
-    assert "foodNutrients" not in result
+    assert result == CHICKEN_GRAVY_FOOD
 
 
 def test_get_nutrition_tool_passes_fdc_id_and_module_api_key(monkeypatch):

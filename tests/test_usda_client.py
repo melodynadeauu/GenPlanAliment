@@ -8,9 +8,9 @@ from data.usda import client as usda_client
 
 
 @pytest.fixture(autouse=True)
-def isolated_cache_path(tmp_path, monkeypatch):
-    """Redirect CACHE_PATH to a throwaway file so tests never touch the real cache."""
-    monkeypatch.setattr(usda_cache, "CACHE_PATH", tmp_path / "usda_cache.json")
+def isolated_db_path(tmp_path, monkeypatch):
+    """Redirect DB_PATH to a throwaway file so tests never touch the real cache."""
+    monkeypatch.setattr(usda_cache, "DB_PATH", tmp_path / "usda_cache.db")
 
 
 class FakeResponse:
@@ -67,8 +67,7 @@ def test_search_food_returns_results_and_caches_them(monkeypatch):
     assert calls[0]["params"] == {"query": "apple", "api_key": "FAKE_KEY"}
     assert calls[0]["timeout"] == 5
 
-    cache = usda_cache.load_cache()
-    assert usda_cache.get_cached_search(cache, "apple") == result.food
+    assert usda_cache.get_cached_search("apple") == result.food
 
 
 def test_search_food_returns_not_found_when_no_results(monkeypatch):
@@ -104,52 +103,46 @@ def test_search_food_caches_not_found_so_second_call_skips_network(monkeypatch):
 
 # --- get_nutrition ---
 
-
+# Real /food/2620254-shaped response, trimmed to the fields client.py reads. foodNutrients
+# carries far more than the four macros (sodium, cholesterol, vitamins, ...) -- only
+# kcal/protein/fat/carbs are extracted and cached, see data.usda.nutrients.MACRO_FIELDS.
 FOOD_DETAIL_EXAMPLE = {
     "dataType": "Branded",
     "description": "NUT 'N BERRY MIX",
     "fdcId": 534358,
     "foodNutrients": [
-        {
-            "number": 303,
-            "name": "Iron, Fe",
-            "amount": 0.53,
-            "unitName": "mg",
-            "derivationCode": "LCCD",
-            "derivationDescription": "Calculated from a daily value percentage per serving size measure",
-        }
+        {"nutrient": {"number": "208", "name": "Energy"}, "amount": 65.0},
+        {"nutrient": {"number": "203", "name": "Protein"}, "amount": 1.61},
+        {"nutrient": {"number": "204", "name": "Total lipid (fat)"}, "amount": 4.03},
+        {"nutrient": {"number": "205", "name": "Carbohydrate, by difference"}, "amount": 4.84},
+        {"nutrient": {"number": "303", "name": "Iron, Fe"}, "amount": 0.53},
     ],
-    "publicationDate": "4/1/2019",
-    "brandOwner": "Kar Nut Products Company",
-    "gtinUpc": "077034085228",
-    "ndbNumber": 7954,
-    "foodCode": "27415110",
+}
+
+EXPECTED_FOOD = {
+    "fdc_id": 534358,
+    "description": "NUT 'N BERRY MIX",
+    "macros_per_100g": {"kcal": 65.0, "protein_g": 1.61, "fat_g": 4.03, "carbs_g": 4.84},
 }
 
 
-def test_get_nutrition_returns_and_caches_fdc_id_description_and_full_food_nutrients(monkeypatch):
-    """Cache/return fdc_id, description and the whole foodNutrients entries as-is -- no scaling,
-    no collapsing to {name: amount}: units differ per nutrient (mg, g, kcal, ...) and other
-    fields (number, derivationCode, derivationDescription, ...) must survive untouched."""
+def test_get_nutrition_returns_and_caches_only_the_four_extracted_macros(monkeypatch):
+    """Iron (and everything else in foodNutrients besides the four macros) is dropped --
+    it's never read anywhere downstream, and keeping it was the old cache's main source
+    of bloat (3.4MB for 48 entries)."""
     calls = []
     monkeypatch.setattr(usda_client.requests, "get", make_fake_get(FOOD_DETAIL_EXAMPLE, calls))
 
     result = usda_client.get_nutrition("534358", "FAKE_KEY")
 
-    expected_food = {
-        "fdc_id": 534358,
-        "description": "NUT 'N BERRY MIX",
-        "foodNutrients": FOOD_DETAIL_EXAMPLE["foodNutrients"],
-    }
     assert result.error is None
-    assert result.food == expected_food
+    assert result.food == EXPECTED_FOOD
     assert len(calls) == 1
     assert calls[0]["url"] == "https://api.nal.usda.gov/fdc/v1/food/534358"
     assert calls[0]["params"] == {"api_key": "FAKE_KEY"}
     assert calls[0]["timeout"] == 5
 
-    cache = usda_cache.load_cache()
-    assert usda_cache.get_cached_nutrition(cache, "534358") == expected_food
+    assert usda_cache.get_cached_nutrition("534358") == {"found": True, "food": EXPECTED_FOOD}
 
 
 def test_get_nutrition_uses_cache_on_second_call(monkeypatch):
@@ -173,3 +166,38 @@ def test_get_nutrition_returns_not_found_when_no_nutrients(monkeypatch):
     result = usda_client.get_nutrition("1", "FAKE_KEY")
 
     assert result == usda_client.FoodLookupResult(None, "not_found")
+
+
+def test_get_nutrition_caches_not_found_so_second_call_skips_network(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        usda_client.requests,
+        "get",
+        make_fake_get({"fdcId": 1, "description": "Empty", "foodNutrients": []}, calls),
+    )
+
+    usda_client.get_nutrition("1", "FAKE_KEY")
+    result = usda_client.get_nutrition("1", "FAKE_KEY")
+
+    assert len(calls) == 1
+    assert result == usda_client.FoodLookupResult(None, "not_found")
+
+
+def test_get_nutrition_backfills_a_row_cached_before_a_macro_field_existed(monkeypatch):
+    """A row cached by an older version of data.usda.nutrients.MACRO_FIELDS (missing a
+    field extract_macros now extracts) must not be trusted as-is -- one live call
+    refreshes it with the full current set of macros, then the cache is fresh again."""
+    calls = []
+    monkeypatch.setattr(usda_client.requests, "get", make_fake_get(FOOD_DETAIL_EXAMPLE, calls))
+    stale_food = {
+        "fdc_id": 534358,
+        "description": "NUT 'N BERRY MIX",
+        "macros_per_100g": {"kcal": 65.0, "protein_g": 1.61, "fat_g": 4.03},  # carbs_g missing
+    }
+    usda_cache.set_cached_nutrition_found("534358", stale_food)
+
+    result = usda_client.get_nutrition("534358", "FAKE_KEY")
+
+    assert len(calls) == 1  # backfilled live, not trusted as cached
+    assert result.food == EXPECTED_FOOD
+    assert usda_cache.get_cached_nutrition("534358") == {"found": True, "food": EXPECTED_FOOD}

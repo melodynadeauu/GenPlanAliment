@@ -1,93 +1,85 @@
-"""Tests for data.usda.cache."""
-import json
+"""Tests for data.usda.cache: SQLite-backed cache for USDA FoodData Central responses.
 
+Point reads/writes (indexed by query / fdc_id) instead of the old JSON cache's
+read-modify-write-the-whole-file pattern, which scaled with total cache size on every
+single call. Nutrition entries store only the four macros data.usda.nutrients.extract_macros
+knows about (not USDA's full foodNutrients panel) -- see data.usda.client.get_nutrition
+for how a cached row missing a newer macro field triggers a one-time backfill.
+"""
 import pytest
 
 from data.usda import cache as usda_cache
 
 
 @pytest.fixture(autouse=True)
-def isolated_cache_path(tmp_path, monkeypatch):
-    """Redirect CACHE_PATH to a throwaway file so tests never touch the real cache."""
-    monkeypatch.setattr(usda_cache, "CACHE_PATH", tmp_path / "usda_cache.json")
-    return usda_cache.CACHE_PATH
+def isolated_db_path(tmp_path, monkeypatch):
+    """Redirect DB_PATH to a throwaway file so tests never touch the real cache."""
+    monkeypatch.setattr(usda_cache, "DB_PATH", tmp_path / "usda_cache.db")
 
 
-def test_load_cache_creates_file_with_empty_dict_when_missing(isolated_cache_path):
-    assert not isolated_cache_path.exists()
-
-    result = usda_cache.load_cache()
-
-    assert result == {}
-    assert isolated_cache_path.exists()
-    assert json.loads(isolated_cache_path.read_text(encoding="utf-8")) == {}
-
-
-def test_load_cache_reads_existing_content(isolated_cache_path):
-    isolated_cache_path.write_text(
-        json.dumps({"search": {"apple": ["fdc1"]}, "nutrition": {}}),
-        encoding="utf-8",
-    )
-
-    result = usda_cache.load_cache()
-
-    assert result == {"search": {"apple": ["fdc1"]}, "nutrition": {}}
-
-
-def test_save_cache_writes_dict_to_disk(isolated_cache_path):
-    usda_cache.save_cache({"search": {"apple": ["fdc1"]}, "nutrition": {}})
-
-    assert json.loads(isolated_cache_path.read_text(encoding="utf-8")) == {
-        "search": {"apple": ["fdc1"]},
-        "nutrition": {},
-    }
+# --- search cache ---
 
 
 def test_get_cached_search_returns_none_when_absent():
-    cache = {}
-    assert usda_cache.get_cached_search(cache, "apple") is None
+    assert usda_cache.get_cached_search("apple") is None
 
 
 def test_set_then_get_cached_search_round_trips():
-    cache = {}
-    usda_cache.set_cached_search(cache, "apple", [{"fdcId": "1"}])
+    usda_cache.set_cached_search("apple", [{"fdc_id": 1, "description": "Apple, raw"}])
 
-    assert usda_cache.get_cached_search(cache, "apple") == [{"fdcId": "1"}]
+    assert usda_cache.get_cached_search("apple") == [{"fdc_id": 1, "description": "Apple, raw"}]
 
 
 def test_get_cached_search_normalizes_query_case_and_whitespace():
-    cache = {}
-    usda_cache.set_cached_search(cache, "  Apple  ", [{"fdcId": "1"}])
+    usda_cache.set_cached_search("  Apple  ", [{"fdc_id": 1, "description": "Apple, raw"}])
 
-    assert usda_cache.get_cached_search(cache, "apple") == [{"fdcId": "1"}]
-    assert usda_cache.get_cached_search(cache, "APPLE") == [{"fdcId": "1"}]
+    assert usda_cache.get_cached_search("apple") == [{"fdc_id": 1, "description": "Apple, raw"}]
+    assert usda_cache.get_cached_search("APPLE") == [{"fdc_id": 1, "description": "Apple, raw"}]
 
 
-def test_set_cached_search_writes_through_to_disk(isolated_cache_path):
-    cache = usda_cache.load_cache()
+def test_set_cached_search_can_cache_an_empty_result_distinctly_from_absent():
+    usda_cache.set_cached_search("zzz_nonexistent", [])
 
-    usda_cache.set_cached_search(cache, "apple", [{"fdcId": "1"}])
+    assert usda_cache.get_cached_search("zzz_nonexistent") == []
+    assert usda_cache.get_cached_search("never_queried") is None
 
-    on_disk = json.loads(isolated_cache_path.read_text(encoding="utf-8"))
-    assert on_disk["search"]["apple"] == [{"fdcId": "1"}]
+
+def test_set_cached_search_overwrites_previous_value_for_the_same_query():
+    usda_cache.set_cached_search("apple", [{"fdc_id": 1, "description": "Apple, raw"}])
+    usda_cache.set_cached_search("apple", [{"fdc_id": 2, "description": "Apple, updated"}])
+
+    assert usda_cache.get_cached_search("apple") == [{"fdc_id": 2, "description": "Apple, updated"}]
+
+
+# --- nutrition cache ---
+
+APPLE_FOOD = {
+    "fdc_id": 1,
+    "description": "Apple, raw",
+    "macros_per_100g": {"kcal": 52.0, "protein_g": 0.3, "fat_g": 0.2, "carbs_g": 14.0},
+}
 
 
 def test_get_cached_nutrition_returns_none_when_absent():
-    cache = {}
-    assert usda_cache.get_cached_nutrition(cache, "12345") is None
+    assert usda_cache.get_cached_nutrition("12345") is None
 
 
-def test_set_then_get_cached_nutrition_round_trips():
-    cache = {}
-    usda_cache.set_cached_nutrition(cache, "12345", {"protein": 1.2})
+def test_set_found_then_get_cached_nutrition_round_trips():
+    usda_cache.set_cached_nutrition_found("1", APPLE_FOOD)
 
-    assert usda_cache.get_cached_nutrition(cache, "12345") == {"protein": 1.2}
+    assert usda_cache.get_cached_nutrition("1") == {"found": True, "food": APPLE_FOOD}
 
 
-def test_set_cached_nutrition_writes_through_to_disk(isolated_cache_path):
-    cache = usda_cache.load_cache()
+def test_set_not_found_then_get_cached_nutrition_reports_not_found():
+    usda_cache.set_cached_nutrition_not_found("999")
 
-    usda_cache.set_cached_nutrition(cache, "12345", {"protein": 1.2})
+    assert usda_cache.get_cached_nutrition("999") == {"found": False}
 
-    on_disk = json.loads(isolated_cache_path.read_text(encoding="utf-8"))
-    assert on_disk["nutrition"]["12345"] == {"protein": 1.2}
+
+def test_set_cached_nutrition_found_overwrites_a_previously_cached_not_found():
+    """Exercises the self-healing backfill path: client.get_nutrition() re-fetching and
+    overwriting a stale/negative row must actually replace it, not just add a second one."""
+    usda_cache.set_cached_nutrition_not_found("1")
+    usda_cache.set_cached_nutrition_found("1", APPLE_FOOD)
+
+    assert usda_cache.get_cached_nutrition("1") == {"found": True, "food": APPLE_FOOD}
