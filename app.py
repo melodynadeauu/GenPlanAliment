@@ -9,6 +9,10 @@ from ui.state import (
     init_state,
     KEY_SELECTED_DAY,
     KEY_GENERATED_PLAN,
+    KEY_PROFILE_AGE,
+    KEY_PROFILE_WEIGHT,
+    KEY_PROFILE_HEIGHT,
+    KEY_PROFILE_GOAL,
 )
 from ui.components.top_bar import render_top_bar
 from ui.components.sidebar_profile import render_profile_section
@@ -17,7 +21,6 @@ from ui.components.totals_row import render_totals_row
 from ui.components.meal_plan import render_meal_plan
 from ui.components.guardrails_bar import render_guardrails_bar
 
-from fixtures.demo_profile import DEMO_PROFILE
 from fixtures.demo_preferences import DEMO_LIKES, DEMO_DISLIKES
 from fixtures.demo_week import DEMO_WEEK
 
@@ -58,7 +61,13 @@ def main() -> None:
 
     # Generate button handler
     if generate_clicked:
-        profile = adapters.profile_from_demo(DEMO_PROFILE)
+        profile_dict = {
+            "age": st.session_state[KEY_PROFILE_AGE],
+            "weight_kg": st.session_state[KEY_PROFILE_WEIGHT],
+            "height_cm": st.session_state[KEY_PROFILE_HEIGHT],
+            "goal": st.session_state[KEY_PROFILE_GOAL],
+        }
+        profile = adapters.profile_from_dict(profile_dict)
         day = adapters.weekday_from_ui_day(selected_day)
 
         with st.spinner("Génération du plan…"):
@@ -71,7 +80,7 @@ def main() -> None:
 
     # Sidebar
     with st.sidebar:
-        render_profile_section(DEMO_PROFILE)
+        render_profile_section()
         st.divider()
         render_preferences_section(DEMO_LIKES, DEMO_DISLIKES)
 

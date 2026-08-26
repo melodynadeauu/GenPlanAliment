@@ -16,8 +16,8 @@ _UI_DAY_TO_WEEKDAY = {
     "dimanche": Weekday.SUNDAY,
 }
 
-# fixtures.demo_profile.DEMO_PROFILE stores the goal as the French label shown
-# in the (currently disabled) sidebar selectbox, not the Goal enum value.
+# The sidebar's goal selectbox (see ui.components.sidebar_profile) stores its
+# value as the French label shown to the user, not the Goal enum value.
 _GOAL_LABEL_TO_GOAL = {
     "Perte de poids": Goal.WEIGHT_LOSS,
     "Prise de muscle": Goal.MUSCLE_GAIN,
@@ -34,9 +34,10 @@ def weekday_from_ui_day(day: str) -> str:
         raise ValueError(f"Unknown UI day name: {day!r}") from None
 
 
-def profile_from_demo(profile: dict) -> Profile:
-    """Build a core.models.Profile from the sidebar's profile dict (currently
-    always fixtures.demo_profile.DEMO_PROFILE, since the fields are read-only).
+def profile_from_dict(profile: dict) -> Profile:
+    """Build a core.models.Profile from a profile dict shaped like
+    fixtures.demo_profile.DEMO_PROFILE (age, weight_kg, height_cm, goal label) —
+    in practice the current values from the sidebar's profile fields.
     """
     try:
         goal = _GOAL_LABEL_TO_GOAL[profile["goal"]]

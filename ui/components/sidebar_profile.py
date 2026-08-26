@@ -2,14 +2,23 @@
 
 import streamlit as st
 
+from ui.state import (
+    KEY_PROFILE_AGE,
+    KEY_PROFILE_GOAL,
+    KEY_PROFILE_HEIGHT,
+    KEY_PROFILE_WEIGHT,
+)
 
-def render_profile_section(profile: dict) -> None:
-    """Render read-only-styled profile fields.
+_GOAL_OPTIONS = ["Perte de poids", "Prise de muscle", "Maintien"]
 
-    Args:
-        profile: Dict with keys: age, weight_kg, height_cm, goal
 
-    Note: Values are hardcoded from fixtures for now. Future: persist to session_state.
+def render_profile_section() -> None:
+    """Render the editable profile fields.
+
+    Each field binds directly to its session_state key (seeded from
+    fixtures.demo_profile.DEMO_PROFILE by ui.state.init_state) so edits persist
+    across reruns. Read the current profile back from st.session_state — see
+    ui.adapters.profile_from_dict.
     """
     st.markdown("### Profil")
 
@@ -18,28 +27,26 @@ def render_profile_section(profile: dict) -> None:
     with col1:
         st.number_input(
             "Âge (ans)",
-            value=profile["age"],
-            disabled=True,
-            key="profile_age",
+            min_value=1,
+            max_value=120,
+            key=KEY_PROFILE_AGE,
         )
         st.number_input(
             "Poids (kg)",
-            value=profile["weight_kg"],
-            disabled=True,
-            key="profile_weight",
+            min_value=20.0,
+            max_value=300.0,
+            key=KEY_PROFILE_WEIGHT,
         )
 
     with col2:
         st.number_input(
             "Taille (cm)",
-            value=profile["height_cm"],
-            disabled=True,
-            key="profile_height",
+            min_value=50.0,
+            max_value=250.0,
+            key=KEY_PROFILE_HEIGHT,
         )
         st.selectbox(
             "Objectif",
-            options=["Perte de poids", "Prise de muscle", "Maintien"],
-            index=0,  # Default to "Perte de poids"
-            disabled=True,
-            key="profile_goal",
+            options=_GOAL_OPTIONS,
+            key=KEY_PROFILE_GOAL,
         )

@@ -2,11 +2,17 @@
 
 import streamlit as st
 
+from fixtures.demo_profile import DEMO_PROFILE
+
 KEY_SELECTED_DAY = "selected_day"
 KEY_ACTIVE_PREF_TAB = "active_pref_tab"
 KEY_PREF_FILTER = "pref_filter_query"
 KEY_GENERATED_PLAN = "generated_plan"
 KEY_IS_GENERATING = "is_generating"
+KEY_PROFILE_AGE = "profile_age"
+KEY_PROFILE_WEIGHT = "profile_weight"
+KEY_PROFILE_HEIGHT = "profile_height"
+KEY_PROFILE_GOAL = "profile_goal"
 
 DEFAULTS = {
     KEY_SELECTED_DAY: "mercredi",
@@ -14,6 +20,12 @@ DEFAULTS = {
     KEY_PREF_FILTER: "",
     KEY_GENERATED_PLAN: None,
     KEY_IS_GENERATING: False,
+    # Profile fields seed from DEMO_PROFILE on first run, then live entirely in
+    # session_state — the user can edit them from there on (see sidebar_profile.py).
+    KEY_PROFILE_AGE: DEMO_PROFILE["age"],
+    KEY_PROFILE_WEIGHT: DEMO_PROFILE["weight_kg"],
+    KEY_PROFILE_HEIGHT: DEMO_PROFILE["height_cm"],
+    KEY_PROFILE_GOAL: DEMO_PROFILE["goal"],
 }
 
 
