@@ -21,6 +21,7 @@ from ui.components.totals_row import render_totals_row
 from ui.components.meal_plan import render_meal_plan
 from ui.components.guardrails_bar import render_guardrails_bar
 
+from fixtures.demo_plan import DEMO_PLAN
 from fixtures.demo_week import DEMO_WEEK
 
 # Error codes GenerationResult.error can carry (see core/agent/llm_adapter.py), each
@@ -51,12 +52,17 @@ def main() -> None:
     configure_page()
     init_state()
 
-    # Top bar: day selector + generate button
-    selected_day, generate_clicked = render_top_bar(
+    # Top bar: day selector + generate button + demo button
+    selected_day, generate_clicked, demo_clicked = render_top_bar(
         week=DEMO_WEEK,
         selected_day=st.session_state[KEY_SELECTED_DAY],
     )
     st.session_state[KEY_SELECTED_DAY] = selected_day
+
+    # Demo mode handler (D1): loads the pre-generated fixture, no LLM/network call --
+    # the fallback when the LLM quota is exhausted mid-demo.
+    if demo_clicked:
+        st.session_state[KEY_GENERATED_PLAN] = DEMO_PLAN
 
     # Generate button handler
     if generate_clicked:
