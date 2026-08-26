@@ -165,6 +165,39 @@ def test_generate_daily_plan_view_returns_the_built_view_on_success(monkeypatch)
     assert view == plan_view.build_plan_view(plan, target_kcal=2000.0)
 
 
+def test_build_plan_view_flags_degraded_plan_with_a_warning_guardrail(monkeypatch):
+    monkeypatch.setattr(plan_view, "get_nutrition_tool", _FakeNutritionTool(lambda fdc_id: APPLE_NUTRITION))
+    plan = PlanPropose(foods=[PlanFood(description="Apple, raw", fdc_id="1", meal=MealType.SNACK, grams=100.0)])
+
+    view = plan_view.build_plan_view(plan, target_kcal=2000.0, degraded=True)
+
+    assert len(view["guardrails"]) == 1
+    assert view["guardrails"][0]["status"] == "warn"
+
+
+def test_build_plan_view_conforming_plan_has_no_guardrail_warnings(monkeypatch):
+    monkeypatch.setattr(plan_view, "get_nutrition_tool", _FakeNutritionTool(lambda fdc_id: APPLE_NUTRITION))
+    plan = PlanPropose(foods=[PlanFood(description="Apple, raw", fdc_id="1", meal=MealType.SNACK, grams=100.0)])
+
+    view = plan_view.build_plan_view(plan, target_kcal=2000.0)
+
+    assert view["guardrails"] == []
+
+
+def test_generate_daily_plan_view_passes_degraded_through(monkeypatch):
+    plan = PlanPropose(foods=[])
+    monkeypatch.setattr(
+        plan_generator,
+        "generate_daily_plan",
+        lambda profile, day: GenerationResult(plan, None, target_kcal=2000.0, degraded=True),
+    )
+
+    view, error = plan_view.generate_daily_plan_view(PROFILE, "monday")
+
+    assert error is None
+    assert len(view["guardrails"]) == 1
+
+
 def test_generate_daily_plan_view_returns_no_view_and_the_error_on_failure(monkeypatch):
     monkeypatch.setattr(
         plan_generator,

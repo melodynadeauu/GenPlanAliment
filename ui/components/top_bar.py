@@ -3,7 +3,7 @@
 import streamlit as st
 
 
-def render_top_bar(week: list[dict], selected_day: str) -> tuple[str, bool]:
+def render_top_bar(week: list[dict], selected_day: str) -> tuple[str, bool, bool]:
     """Render the fixed top bar.
 
     Args:
@@ -11,9 +11,11 @@ def render_top_bar(week: list[dict], selected_day: str) -> tuple[str, bool]:
         selected_day: Currently selected day name (e.g., "mercredi")
 
     Returns:
-        (new_selected_day, generate_clicked): Updated day and button state
+        (new_selected_day, generate_clicked, demo_clicked): Updated day, generate
+        button state, and demo button state (D1: filet de sécurité anti-quota --
+        recharge fixtures.demo_plan.DEMO_PLAN with no LLM/network call).
     """
-    col1, col2, col3, col4 = st.columns([1, 4, 2, 1.5])
+    col1, col2, col3, col4, col5 = st.columns([1, 4, 2, 1.5, 1.5])
 
     # Brand mark
     with col1:
@@ -64,4 +66,14 @@ def render_top_bar(week: list[dict], selected_day: str) -> tuple[str, bool]:
             use_container_width=True,
         )
 
-    return selected_day, generate_clicked
+    # Demo mode button (D1): recharge a pre-generated plan, no LLM call, no network --
+    # the fallback when the LLM quota is exhausted mid-demo.
+    with col5:
+        demo_clicked = st.button(
+            "Plan de démo",
+            key="demo_plan_btn",
+            use_container_width=True,
+            help="Recharge un plan déjà généré, sans appel LLM.",
+        )
+
+    return selected_day, generate_clicked, demo_clicked
