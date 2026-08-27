@@ -4,6 +4,7 @@ data/preferences/food_preferences.json.
 
 import streamlit as st
 
+from core.agent import preference_validation
 from data.preferences import store as preferences_store
 from ui.state import KEY_ACTIVE_PREF_TAB
 
@@ -74,10 +75,17 @@ def render_preferences_section() -> None:
     )
 
     if selected != active_items:
-        try:
-            if active_tab == "likes":
-                preferences_store.save_preferences({"likes": selected, "dislikes": dislikes})
-            else:
-                preferences_store.save_preferences({"likes": likes, "dislikes": selected})
-        except ValueError as error:
-            st.error(str(error))
+        unknown = preference_validation.find_unknown_new_items(active_items, selected)
+        if unknown:
+            terms = ", ".join(f"« {item} »" for item in unknown)
+            st.error(
+                f"{terms} not recognized as a USDA food. Try a simpler or more generic name."
+            )
+        else:
+            try:
+                if active_tab == "likes":
+                    preferences_store.save_preferences({"likes": selected, "dislikes": dislikes})
+                else:
+                    preferences_store.save_preferences({"likes": likes, "dislikes": selected})
+            except ValueError as error:
+                st.error(str(error))

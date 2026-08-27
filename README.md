@@ -41,6 +41,7 @@ See the Dossier de défense (D1–D10) for the full reasoning. Summary:
 | G5 | Plausible bounds on age/weight/height | `ui/components/sidebar_profile.py` |
 | G6 | Preferences sanitized before entering the prompt | `core/agent/guardrails.py::sanitize_preference_items` |
 | G7 | Max 2 attempts, then degraded mode with a visible warning | `core/agent/graph.py` |
+| G8 | New preference terms rejected unless USDA recognizes them as food (fails open on API errors) | `core/agent/preference_validation.py` |
 | G-exists | Invented/unresolvable fdc_ids rejected, not silently dropped from the total | `core/agent/graph.py::validate_guardrails_node` |
 
 Demo mode: the "Demo plan" button in the top bar reloads a plan that was already
