@@ -1,7 +1,6 @@
-"""Tests for core.agent.graph: the LangGraph tool-calling loop. The chat model is faked
-(FakeChatModel) so these tests never call a real provider -- core.agent.providers.{gemini,
-groq} are only reached through the `provider` argument's classify_exception(), itself
-faked here too (FakeProvider)."""
+"""Tests for core.agent.graph. The chat model (FakeChatModel) and provider
+(FakeProvider) are both faked so these tests never call a real provider.
+"""
 import json
 
 import pytest
@@ -91,8 +90,8 @@ class _FakeNutritionTool:
 
 
 class _FakeNutritionToolByFdcId:
-    """Like _FakeNutritionTool, but only resolves fdc_ids in `known` -- anything else
-    errors, simulating an LLM-invented fdc_id that doesn't exist in USDA (G-exists)."""
+    """Like _FakeNutritionTool, but only resolves fdc_ids in `known`; anything
+    else errors."""
 
     def __init__(self, known):
         self._known = set(known)
@@ -113,9 +112,8 @@ def fake_nutrition_lookup(monkeypatch):
 
 
 def _initial_state(target_kcal=0.0, dislikes=None):
-    """target_kcal defaults to 0 (falsy), which skips the G1 conformity check entirely
-    -- most pre-existing tests in this file care about the tool-calling loop, not the
-    calorie/dislikes guardrails, so they'd otherwise need a food-count-matching target."""
+    """target_kcal defaults to 0 (falsy), which skips the conformity check --
+    most tests here care about the tool-calling loop, not the guardrails."""
     return {
         "messages": [SystemMessage(content="system"), HumanMessage(content="user")],
         "turn": 0,
@@ -138,11 +136,9 @@ def _tool_messages(result):
 
 
 def test_max_auto_turns_is_generous_enough_for_one_tool_call_per_turn_models():
-    """Verified live against Groq's openai/gpt-oss-120b (2026-08-25): unlike Gemini, which
-    batches many tool calls into a single turn, it calls exactly one tool per turn --
-    search then lookup, one food at a time. A budget only large enough for Gemini's
-    calling pattern starves it before it finishes gathering data, so the forced final
-    turn fails instead of ever reaching submit_plan."""
+    """Verified live against Groq's openai/gpt-oss-120b (2026-08-25): it calls
+    one tool per turn, unlike Gemini's batching, so the budget must be
+    generous enough not to starve it."""
     assert agent_graph.MAX_AUTO_TURNS >= 15
 
 
@@ -223,10 +219,8 @@ def test_returns_invalid_output_when_forced_turn_still_skips_submit_plan():
 
 
 def test_returns_invalid_output_when_forced_turn_calls_wrong_tool_without_looping_further():
-    """route_after_agent must check the turn-budget overflow before the tool_calls check:
-    otherwise a provider that doesn't honor tool_choice on the forced turn (returning a
-    data-tool call instead of submit_plan) routes to "tools" and the graph loops past the
-    intended single forced call instead of finalizing with invalid_output."""
+    """The turn-budget check must run before the tool_calls check, or a forced
+    turn that ignores tool_choice loops past the intended single call."""
     model = FakeChatModel(
         [ai_message([]) for _ in range(agent_graph.MAX_AUTO_TURNS)]
         + [ai_message([data_call("1", "fake_tool", {"query": "chicken gravy"})])]
@@ -319,12 +313,11 @@ def test_reports_api_error_for_an_unclassified_exception_without_retrying(no_rea
     assert no_real_sleep == []
 
 
-# --- G1/G2/G3/G7: resolve_recompute / validate_guardrails / retry / degrade ---
+# --- resolve_recompute / validate_guardrails / retry / degrade ---
 
 
 def test_conforming_plan_reaches_finalize_without_retry():
-    """APPLE is 100g and fake_nutrition_lookup resolves 100 kcal/100g -> total 100 kcal,
-    matching target_kcal=100 exactly. No dislikes. Must finalize on the first attempt."""
+    """APPLE (100g) resolves to 100 kcal, matching target_kcal=100 exactly."""
     model = FakeChatModel([ai_message([submit_call("1", [APPLE])])])
     compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
 
@@ -337,8 +330,7 @@ def test_conforming_plan_reaches_finalize_without_retry():
 
 
 def test_disliked_food_triggers_one_retry_then_succeeds():
-    """First proposal is on the dislikes list; second (after the injected violation
-    reason) isn't. Must finalize on attempt 2, not degrade."""
+    """First proposal is disliked; the second, after retry, isn't."""
     bad = {"description": "Apple", "fdc_id": "1", "meal": "snack", "grams": 100.0}
     good = {"description": "Pear", "fdc_id": "2", "meal": "snack", "grams": 100.0}
     model = FakeChatModel([ai_message([submit_call("1", [bad])]), ai_message([submit_call("2", [good])])])
@@ -355,8 +347,7 @@ def test_disliked_food_triggers_one_retry_then_succeeds():
 
 
 def test_exhausted_retries_degrades_instead_of_looping_forever():
-    """Every attempt keeps violating -- after MAX_ATTEMPTS, degrade rather than loop
-    forever or silently show a non-conforming plan."""
+    """Every attempt keeps violating; degrades after MAX_ATTEMPTS."""
     bad = {"description": "Apple", "fdc_id": "1", "meal": "snack", "grams": 100.0}
     model = FakeChatModel([ai_message([submit_call(str(i), [bad])]) for i in range(agent_graph.MAX_ATTEMPTS)])
     compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
@@ -371,14 +362,12 @@ def test_exhausted_retries_degrades_instead_of_looping_forever():
     assert result["attempt"] == agent_graph.MAX_ATTEMPTS
 
 
-# --- G-exists: a food whose fdc_id doesn't resolve against USDA is a violation, not a
-# silently-dropped line item -- same retry/degrade path as G1/G2, driven by
-# resolve_recompute_node's `unresolved` list. ---
+# --- an unresolved fdc_id is a violation, not a silently-dropped line item ---
 
 
 def test_unresolvable_fdc_id_triggers_one_retry_then_succeeds(monkeypatch):
-    """First proposal invents an fdc_id USDA doesn't have; second (after the injected
-    violation reason) uses one that resolves. Must finalize on attempt 2, not degrade."""
+    """First proposal invents an fdc_id USDA doesn't have; the second, after
+    retry, uses one that resolves."""
     ghost = {"description": "Mystery Food", "fdc_id": "999", "meal": "snack", "grams": 100.0}
     real = {"description": "Apple", "fdc_id": "1", "meal": "snack", "grams": 100.0}
     monkeypatch.setattr(agent_graph, "get_nutrition_tool", _FakeNutritionToolByFdcId(known=["1"]))
@@ -397,8 +386,8 @@ def test_unresolvable_fdc_id_triggers_one_retry_then_succeeds(monkeypatch):
 
 
 def test_unresolvable_fdc_id_exhausts_retries_and_degrades(monkeypatch):
-    """Every attempt keeps inventing an fdc_id USDA doesn't have -- after MAX_ATTEMPTS,
-    degrade rather than loop forever or silently drop the food from the total."""
+    """Every attempt keeps inventing an unresolvable fdc_id; degrades after
+    MAX_ATTEMPTS."""
     ghost = {"description": "Mystery Food", "fdc_id": "999", "meal": "snack", "grams": 100.0}
     monkeypatch.setattr(agent_graph, "get_nutrition_tool", _FakeNutritionToolByFdcId(known=[]))
     model = FakeChatModel(
@@ -413,16 +402,13 @@ def test_unresolvable_fdc_id_exhausts_retries_and_degrades(monkeypatch):
     assert result["attempt"] == agent_graph.MAX_ATTEMPTS
 
 
-# --- adjust_portions: business-rule fallback for G1-only violations that exhaust
-# MAX_ATTEMPTS but stay within ADJUST_MAX_FRACTION -- scale grams instead of degrading. ---
+# --- adjust_portions: rescale grams instead of degrading, when the only
+# violation is a calorie gap within ADJUST_MAX_FRACTION ---
 
 
 def test_calorie_violation_within_adjust_cap_adjusts_portions_instead_of_degrading():
-    """APPLE is 100g resolving to 100 kcal (fake_nutrition_lookup). target=113 needs a
-    13% correction -- a G1 violation (over TARGET_TOLERANCE_FRACTION=10%) but within
-    ADJUST_MAX_FRACTION=15%. Once MAX_ATTEMPTS is exhausted, scale grams by
-    target/total (113/100=1.13) instead of degrading: 100*1.13=113, rounded to the
-    nearest 5g -> 115g -> 115 kcal, back within tolerance of 113."""
+    """APPLE (100g -> 100 kcal), target=113: a 13% gap, within ADJUST_MAX_FRACTION
+    (15%). Scaled by 113/100 and rounded to the nearest 5g -> 115g -> 115 kcal."""
     model = FakeChatModel([ai_message([submit_call(str(i), [APPLE])]) for i in range(agent_graph.MAX_ATTEMPTS)])
     compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
 
@@ -436,9 +422,8 @@ def test_calorie_violation_within_adjust_cap_adjusts_portions_instead_of_degradi
 
 
 def test_calorie_violation_beyond_adjust_cap_still_degrades():
-    """target=200 needs a 100% correction -- a G1 violation far beyond
-    ADJUST_MAX_FRACTION=15%. Forcing that scale would produce an unrealistic portion, so
-    this still degrades exactly like before adjust_portions existed."""
+    """target=200 needs a 100% correction, far beyond ADJUST_MAX_FRACTION
+    (15%), so it still degrades."""
     model = FakeChatModel([ai_message([submit_call(str(i), [APPLE])]) for i in range(agent_graph.MAX_ATTEMPTS)])
     compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
 
@@ -451,8 +436,8 @@ def test_calorie_violation_beyond_adjust_cap_still_degrades():
 
 
 def test_adjust_portions_not_applied_when_disliked_food_also_violates():
-    """Rescaling grams can't fix a disliked-food violation -- even though the calorie
-    gap alone (113 vs 100, 13%) would be adjustable, the plan must still degrade."""
+    """The calorie gap alone would be adjustable, but a disliked food forces
+    degrade anyway."""
     model = FakeChatModel([ai_message([submit_call(str(i), [APPLE])]) for i in range(agent_graph.MAX_ATTEMPTS)])
     compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
 
@@ -466,9 +451,7 @@ def test_adjust_portions_not_applied_when_disliked_food_also_violates():
 
 
 def test_adjust_portions_not_applied_when_unresolved_food_also_violates(monkeypatch):
-    """Rescaling grams can't fix an unresolved fdc_id either -- the plan must still
-    degrade even though a G1 violation is also present (an unresolved food is excluded
-    from the total, which itself pulls the total away from target)."""
+    """Rescaling can't fix an unresolved fdc_id either; it still degrades."""
     ghost = {"description": "Mystery Food", "fdc_id": "999", "meal": "snack", "grams": 100.0}
     monkeypatch.setattr(agent_graph, "get_nutrition_tool", _FakeNutritionToolByFdcId(known=[]))
     model = FakeChatModel([ai_message([submit_call(str(i), [ghost])]) for i in range(agent_graph.MAX_ATTEMPTS)])

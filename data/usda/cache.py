@@ -1,10 +1,5 @@
-"""SQLite-backed cache for USDA FoodData Central API responses (search + nutrition).
-
-Permanent cache, write-through: each set_ call commits a single row immediately, so
-a query or fdc_id stays cached forever once looked up. Nutrition rows store only the
-four macros data.usda.nutrients.extract_macros knows about, not USDA's full
-foodNutrients panel -- see data.usda.client.get_nutrition for how a row cached before
-a macro field existed here gets backfilled with one live call.
+"""SQLite-backed cache for USDA FoodData Central responses (search + nutrition).
+Permanent, write-through: each set_ call commits immediately.
 """
 import json
 import sqlite3
@@ -34,9 +29,8 @@ def connect() -> sqlite3.Connection:
 
 
 def get_cached_search(query: str) -> list | None:
-    """Return cached search results for `query` (normalized), or None if never cached.
-    Distinguishes "never cached" (None) from "cached, found nothing" ([]) -- the latter
-    still counts as a hit, so a confirmed-empty query never re-hits the network."""
+    """Cached search results for `query` (normalized), or None if never cached.
+    [] means "cached, found nothing" -- still a hit."""
     key = query.strip().lower()
     conn = connect()
     try:
@@ -79,9 +73,8 @@ def get_cached_nutrition(fdc_id: str) -> dict | None:
 
 
 def set_cached_nutrition_found(fdc_id: str, food: dict) -> None:
-    """Cache `food` (already trimmed to fdc_id/description/macros_per_100g) for `fdc_id`
-    and commit immediately. Overwrites any previous row for the same fdc_id -- including
-    a stale not_found or a row missing a macro field added since it was cached."""
+    """Cache `food` for `fdc_id` and commit immediately. Overwrites any
+    previous row, including a stale one."""
     conn = connect()
     try:
         conn.execute(

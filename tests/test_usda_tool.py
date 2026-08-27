@@ -1,10 +1,7 @@
 """Tests for core.tools.usda_tool: LLM-facing @tool wrappers around data.usda.client.
 
-search_food_tool/get_nutrition_tool are StructuredTool instances (langchain_core.tools),
-not plain functions -- called via .invoke({...}), not fn(...). data.usda.client.search_food
-/ get_nutrition are monkeypatched directly (not requests.get) -- these tests only check the
-tool's own wrapping, not the client's retry/caching behaviour, which is covered in
-tests/test_usda_client*.
+data.usda.client.search_food/get_nutrition are monkeypatched directly; retry/caching
+behavior is covered in tests/test_usda_client*.
 """
 import pytest
 
@@ -28,9 +25,7 @@ def test_get_nutrition_tool_is_a_structured_tool_named_after_the_function():
 
 
 def test_a_structured_tool_is_no_longer_directly_callable():
-    """Documents the breaking change @tool introduces -- callers must use .invoke({...}).
-    core.agent.plan_view was the one caller relying on the old plain-callable form
-    (see Task 3)."""
+    """@tool makes it a StructuredTool; callers must use .invoke({...})."""
     with pytest.raises(TypeError):
         usda_tool.search_food_tool("apple")
 
@@ -89,8 +84,7 @@ CHICKEN_GRAVY_FOOD = {
 
 
 def test_get_nutrition_tool_passes_through_the_client_food_dict_unchanged(monkeypatch):
-    """client.get_nutrition already extracts/caches only the four macros (see
-    data.usda.nutrients) -- get_nutrition_tool is a passthrough, not a transform."""
+    """get_nutrition_tool is a passthrough, not a transform."""
     monkeypatch.setattr(
         usda_client,
         "get_nutrition",

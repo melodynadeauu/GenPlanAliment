@@ -3,7 +3,6 @@
 DEMO_PLAN = {
     "day": "wednesday",
     "generated_at": "09:41",
-    "model_label": "Gemini 2.5 Flash",
     "target_kcal": 1806,
     "total_kcal": 1792,
     "total_protein_g": 132,
@@ -30,7 +29,7 @@ DEMO_PLAN = {
             "kcal": 542,
             "items": [
                 {"food": "Salmon, baked", "grams": 150, "kcal": 312, "source": "FDC 175167", "source_status": "ok"},
-                {"food": "Quinoa, cooked", "grams": 140, "kcal": 172, "source": "estimated — FDC unavailable", "source_status": "warn"},
+                {"food": "Quinoa, cooked", "grams": 140, "kcal": 172, "source": "estimated (FDC unavailable)", "source_status": "warn"},
             ],
         },
         {
@@ -41,9 +40,16 @@ DEMO_PLAN = {
             ],
         },
     ],
+    # warn + info shown together only for demo purposes -- the real pipeline
+    # never emits both for one plan (see plan_view.build_plan_view).
     "guardrails": [
-        {"status": "ok", "message": "Deficit cap respected"},
-        {"status": "ok", "message": "No excluded food detected"},
-        {"status": "warn", "message": "Quinoa estimated — FDC unavailable"},
+        {"status": "ok", "message": "Calorie target within safe limits"},
+        {"status": "ok", "message": "No disliked foods in this plan"},
+        {
+            "status": "warn",
+            "message": "Plan non-compliant after 2 attempts: Quinoa, cooked could "
+            "not be found in USDA and are shown as estimated.",
+        },
+        {"status": "info", "message": "Portions adjusted automatically to meet the calorie target."},
     ],
 }

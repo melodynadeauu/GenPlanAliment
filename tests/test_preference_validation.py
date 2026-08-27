@@ -1,8 +1,7 @@
 """Tests for core.agent.preference_validation.
 
-data.usda.client.search_food is monkeypatched directly (not requests.get) -- these
-tests only check the guardrail's own decision, not the client's retry/caching
-behaviour, which is covered in tests/test_usda_client*.
+data.usda.client.search_food is monkeypatched directly; retry/caching behavior
+is covered in tests/test_usda_client*.
 """
 import pytest
 
@@ -39,8 +38,7 @@ def test_is_known_food_false_on_not_found(monkeypatch):
 
 @pytest.mark.parametrize("error_code", FAIL_OPEN_ERROR_CODES)
 def test_is_known_food_fails_open_on_transient_errors(monkeypatch, error_code):
-    """A term must never be rejected just because USDA is unreachable or
-    rate limited -- only a completed search with zero results rejects it."""
+    """A term is never rejected just because USDA is unreachable or rate limited."""
     monkeypatch.setattr(
         usda_client,
         "search_food",
@@ -78,8 +76,7 @@ def test_find_unknown_new_items_empty_when_nothing_added(monkeypatch):
 
 
 def test_find_unknown_new_items_ignores_items_already_present(monkeypatch):
-    """Only newly added items are checked -- an existing preference is never
-    re-validated, so it can't start failing retroactively."""
+    """An existing preference is never re-validated."""
     calls = []
     monkeypatch.setattr(
         usda_client,

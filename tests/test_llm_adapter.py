@@ -58,9 +58,7 @@ def test_generate_returns_degraded_true_when_the_graph_exhausted_its_retries(fak
 
 
 def test_generate_returns_adjusted_true_when_the_graph_scaled_portions(fake_build_graph):
-    """G7 business-rule fallback: the graph rescaled grams to hit target_kcal instead of
-    degrading -- generate() must surface that as adjusted=True so plan_view can show a
-    distinct, non-alarming banner instead of the degraded warning."""
+    """A rescaled-portions result must surface as adjusted=True, not degraded."""
     plan = PlanPropose(foods=[PlanFood(description="Apple", fdc_id="1", meal="snack", grams=115.0)])
     fake_build_graph({"plan": plan, "error": None, "degraded": False, "adjusted": True})
 
@@ -92,12 +90,8 @@ def test_generate_builds_the_initial_state_with_system_and_user_messages(fake_bu
 
 
 def test_generate_returns_api_error_if_the_graph_itself_raises(monkeypatch):
-    """Defense in depth for the "never raises" contract: core.agent.graph's own nodes
-    already turn every LLM/tool failure into a state["error"] string, but LangGraph's
-    runtime can still raise between node executions on its own (e.g. GraphRecursionError
-    if a provider ever violated tool_choice badly enough to blow the turn budget) --
-    that exception happens outside any node's try/except, so generate() must catch it too,
-    not just trust the graph's final_state["error"] to always be reachable."""
+    """LangGraph's runtime can raise between nodes (e.g. GraphRecursionError),
+    outside any node's own try/except; generate() must catch that too."""
 
     class RaisingGraph:
         def invoke(self, initial_state, config=None):
@@ -111,11 +105,8 @@ def test_generate_returns_api_error_if_the_graph_itself_raises(monkeypatch):
 
 
 def test_generate_returns_api_error_if_build_graph_itself_raises(monkeypatch):
-    """get_llm()/build_graph() must be inside generate()'s try too: get_llm() can raise
-    (pydantic validation, missing env setup) and build_graph() calls bind_tools(), which
-    can raise ValueError on an unconvertible tool schema. Neither happens inside
-    compiled.invoke(), so this is a distinct failure point from the RaisingGraph case
-    above."""
+    """get_llm()/build_graph() can raise before compiled.invoke() ever runs;
+    that must be caught too."""
 
     def _raise(*a, **k):
         raise ValueError("unconvertible tool schema")

@@ -21,7 +21,7 @@ MEAL_LABELS = {
 
 MEAL_ORDER = [MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER, MealType.SNACK]
 
-_LOOKUP_FAILED_SOURCE = "estimated — FDC unavailable"
+_LOOKUP_FAILED_SOURCE = "estimated (FDC unavailable)"
 
 
 def generate_daily_plan_view(profile: Profile, day: str) -> tuple[dict | None, str | None]:
@@ -80,11 +80,11 @@ def build_plan_view(plan: PlanPropose, target_kcal: float, degraded: bool = Fals
             # G-exists caused (or contributed to) the degrade: name the ghost food(s)
             # instead of the generic message, so the warning is actionable.
             message = (
-                f"Plan non-compliant after 2 attempts — {', '.join(unresolved_names)} "
+                f"Plan non-compliant after 2 attempts: {', '.join(unresolved_names)} "
                 "could not be found in USDA and are shown as estimated."
             )
         else:
-            message = "Plan non-compliant after 2 attempts — check the total and excluded foods."
+            message = "Plan non-compliant after 2 attempts. Check the total and excluded foods."
         guardrails = [{"status": "warn", "message": message}]
     elif adjusted:
         guardrails = [

@@ -1,14 +1,9 @@
 """LangGraph orchestration: the node graph described in docs/architecture.md.
-load_context is a pass-through documenting the input boundary; agent/tools/
-collect_proposal is the tool-calling loop that gets an LLM to call submit_plan;
-resolve_recompute re-derives totals from get_nutrition_tool so no LLM number reaches
-the user (G3), also collecting any fdc_id USDA doesn't recognize into `unresolved`
-(G-exists); validate_guardrails enforces G1 (target conformity), G2 (disliked foods)
-and G-exists (no invented fdc_ids), looping back to `agent` with the violation reason,
-capped at MAX_ATTEMPTS -- exhausting it goes to `adjust_portions` (G7 business-rule
-fallback: rescale grams to hit target_kcal) when G1 is the only remaining violation and
-the gap is within ADJUST_MAX_FRACTION, or to `degrade` otherwise, instead of showing a
-silently non-conforming plan.
+
+load_context -> agent/tools/collect_proposal (tool-calling loop) -> resolve_recompute
+(re-derives totals so no LLM number reaches the user) -> validate_guardrails (target
+conformity, disliked foods, unresolved fdc_ids), looping back to agent up to
+MAX_ATTEMPTS, then adjust_portions or degrade instead of showing a non-conforming plan.
 """
 import json
 import time
@@ -27,29 +22,20 @@ from core.agent.schemas import PlanFood, PlanPropose
 from core.tools.usda_tool import get_nutrition_tool
 
 SUBMIT_PLAN_TOOL_NAME = "submit_plan"
-# Sized for Groq, which calls exactly one tool per turn (search then lookup) unlike
-# Gemini, which batches many calls into one turn -- a lower budget would starve Groq
-# before it finishes gathering data.
+# Sized for Groq (one tool call per turn); Gemini batches many per turn.
 MAX_AUTO_TURNS = 15
 RETRY_DELAYS_SECONDS = [1, 2]
 MAX_RETRIES = 2
-# G7: max guardrail-violation retries (distinct from MAX_RETRIES, which caps transient
-# LLM-call retries within one attempt). Hardcoded, not LLM-configurable.
+# Max guardrail-violation retries (separate from MAX_RETRIES, for transient LLM errors).
 MAX_ATTEMPTS = 2
-# G1: a plan more than this fraction off target_kcal is a violation, not just
-# imprecise. A target_kcal of 0 skips the check -- used by tests that don't care
-# about calorie conformity.
+# A plan more than this fraction off target_kcal is a violation. target_kcal=0
+# skips the check (used by tests).
 TARGET_TOLERANCE_FRACTION = 0.10
-# G7 business-rule fallback: when MAX_ATTEMPTS is exhausted and the only remaining
-# violation is G1, scale every food's grams by target/total instead of degrading --
-# but only up to this fraction off target. Beyond it, the correction would produce
-# unrealistic portions, so it still degrades. Deliberately looser than
-# TARGET_TOLERANCE_FRACTION: that's "is this plan good enough", this is "is this plan
-# close enough that rescaling it still looks human-picked".
+# When the calorie target is the only remaining violation, rescale grams instead
+# of degrading -- but only up to this fraction off target.
 ADJUST_MAX_FRACTION = 0.15
-# Adjusted portions are rounded to the nearest multiple of this many grams, so a
-# rescaled plan still reads like a chosen serving size instead of a raw
-# multiplication artifact. Never rounded below this floor.
+# Rescaled portions are rounded to the nearest multiple of this many grams,
+# never below it.
 ADJUST_ROUND_GRAMS = 5
 
 
@@ -65,7 +51,7 @@ class AgentState(TypedDict):
     tool_was_called: bool
     plan: PlanPropose | None
     error: str | None
-    # --- fields added for the 5/6-node graph (G1/G2/G3/G7) ---
+    # --- guardrail state ---
     target_kcal: float
     dislikes: list[str]
     resolved_total_kcal: float | None
@@ -78,9 +64,8 @@ class AgentState(TypedDict):
 
 
 def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
-    """Compile the agent graph for one generate() call. `provider` is the active
-    core.agent.providers.{gemini,groq} module -- used only for its classify_exception(),
-    so this stays provider-agnostic the same way llm_adapter._provider already is.
+    """Compile the agent graph for one generate() call. `provider` supplies
+    classify_exception().
     """
     all_tools = [*data_tools, submit_plan]
     tools_by_name = {t.name: t for t in data_tools}
@@ -88,10 +73,8 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
     bound_forced = llm.bind_tools(all_tools, tool_choice=SUBMIT_PLAN_TOOL_NAME)
 
     def load_context_node(state: AgentState) -> dict:
-        """Pass-through: Profile/ActivityEntry already validate their inputs at
-        construction (core/models.py), so there's nothing left to reject here. Exists
-        as its own node so the graph's shape matches the architecture diagram -- the
-        input boundary is explicit even though today it never rejects anything.
+        """Pass-through; inputs are already validated at construction. Its own
+        node so the graph shape matches the architecture diagram.
         """
         return {}
 
@@ -133,22 +116,15 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
             plan = PlanPropose(**call["args"])
         except (ValidationError, TypeError):
             return {"error": "invalid_output"}
-        # PlanPropose itself allows an empty foods list, but an empty plan is only
-        # genuinely valid if the LLM actually tried and found nothing to add -- not if
-        # it skipped straight to submit_plan without ever calling a data tool.
+        # An empty plan is only valid if a data tool was actually called first.
         if not plan.foods and not state["tool_was_called"]:
             return {"error": "invalid_output"}
         return {"plan": plan}
 
     def resolve_recompute_node(state: AgentState) -> dict:
-        """G3: never trust the LLM's own arithmetic. Re-derive the total kcal from
-        get_nutrition_tool (already cache-warm from generation, see data.usda.cache) so
-        validate_guardrails checks a number Python computed, not one the model claimed.
-
-        A food whose fdc_id USDA doesn't recognize (the model invented or misremembered
-        it) is excluded from the total rather than crashing, but its description/fdc_id
-        is also collected into `unresolved` so validate_guardrails can flag it as a
-        violation (G-exists) instead of letting it silently vanish from the plan.
+        """Re-derives total kcal from get_nutrition_tool instead of trusting the
+        LLM's arithmetic. A food whose fdc_id USDA doesn't recognize is excluded
+        from the total and collected into `unresolved`.
         """
         plan = state["plan"]
         assert plan is not None
@@ -164,15 +140,11 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
         return {"resolved_total_kcal": total_kcal, "unresolved": unresolved}
 
     def validate_guardrails_node(state: AgentState) -> dict:
-        """G1 (target conformity) + G2 (disliked foods) + G-exists (fdc_ids that
-        actually resolve against USDA), all deterministic. Never mutates the plan --
-        only decides, via route_after_validate, whether to loop back to `agent`,
-        finalize, degrade, or (G7 fallback) adjust_portions.
+        """Checks target conformity, disliked foods, and unresolved fdc_ids. Never
+        mutates the plan; only decides the next route.
 
-        `adjustable` is derived from the same booleans that build `violations`, not by
-        re-parsing those messages -- it's True only when G1 is the *sole* violation and
-        the gap is within ADJUST_MAX_FRACTION, so route_after_validate can decide
-        adjust vs. degrade without guessing from text.
+        `adjustable` is True only when the calorie target is the sole violation
+        and within ADJUST_MAX_FRACTION.
         """
         plan = state["plan"]
         assert plan is not None
@@ -207,15 +179,9 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
         return {"violations": violations, "adjustable": adjustable}
 
     def adjust_portions_node(state: AgentState) -> dict:
-        """G7 business-rule fallback: scale every food's grams by target/total so the
-        total lands on target_kcal, instead of showing a degraded plan. Uniform scaling
-        preserves each food's macro ratios (kcal is linear in grams) -- this only
-        resizes portions, it never changes what's on the plate. Grams are rounded to
-        ADJUST_ROUND_GRAMS so the result still reads like a chosen serving size.
-
-        Only reached once per generate() call (route_after_validate checks `adjusted`
-        before routing here again), so a residual violation after rounding falls
-        through to degrade on the next validate_guardrails pass rather than looping.
+        """Scales every food's grams by target/total so the total lands on
+        target_kcal, instead of degrading. Runs at most once per generate() call;
+        a residual violation after rounding falls through to degrade.
         """
         plan = state["plan"]
         total = state["resolved_total_kcal"]
@@ -242,11 +208,8 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
         if any(call["name"] == SUBMIT_PLAN_TOOL_NAME for call in tool_calls):
             return "collect_proposal"
         if state["turn"] > MAX_AUTO_TURNS:
-            # The forced final turn didn't call submit_plan (no tool call, or the wrong
-            # tool) -- collect_proposal_node reports invalid_output rather than looping
-            # again. Checked before the tool_calls check below so a provider that doesn't
-            # honor tool_choice on the forced turn can't loop past the intended single
-            # forced call.
+            # Forced final turn didn't call submit_plan; report invalid_output
+            # instead of looping again.
             return "collect_proposal"
         if tool_calls:
             return "tools"
@@ -293,19 +256,14 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
 
 
 def _round_grams(grams: float) -> float:
-    """Round an adjust_portions-scaled gram amount to the nearest ADJUST_ROUND_GRAMS,
-    never below that floor -- keeps a rescaled portion looking human-picked instead of
-    a raw multiplication artifact (or, at the low end, vanishing to 0g).
-    """
+    """Round to the nearest ADJUST_ROUND_GRAMS, never below it."""
     return max(float(ADJUST_ROUND_GRAMS), round(grams / ADJUST_ROUND_GRAMS) * ADJUST_ROUND_GRAMS)
 
 
 def _invoke_with_retry(bound_llm, messages, provider):
-    """One LLM call, retried per RETRY_DELAYS_SECONDS/MAX_RETRIES against whatever
-    `provider.classify_exception` recognizes as retryable ("rate_limited"/"timeout"),
-    raising the matching canonical error once retries are exhausted. A classification of
-    "invalid_output" raises immediately, unretried; None re-raises the original exception
-    as-is, translated by agent_node's bare `except Exception` into "api_error".
+    """One LLM call, retried per RETRY_DELAYS_SECONDS/MAX_RETRIES for retryable
+    errors from provider.classify_exception. "invalid_output" raises immediately;
+    anything else re-raises as-is.
     """
     attempt = 0
     while True:

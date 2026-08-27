@@ -1,11 +1,4 @@
-"""Tests for data.usda.cache: SQLite-backed cache for USDA FoodData Central responses.
-
-Point reads/writes (indexed by query / fdc_id) instead of the old JSON cache's
-read-modify-write-the-whole-file pattern, which scaled with total cache size on every
-single call. Nutrition entries store only the four macros data.usda.nutrients.extract_macros
-knows about (not USDA's full foodNutrients panel) -- see data.usda.client.get_nutrition
-for how a cached row missing a newer macro field triggers a one-time backfill.
-"""
+"""Tests for data.usda.cache: SQLite-backed cache for USDA FoodData Central responses."""
 import pytest
 
 from data.usda import cache as usda_cache
@@ -77,8 +70,7 @@ def test_set_not_found_then_get_cached_nutrition_reports_not_found():
 
 
 def test_set_cached_nutrition_found_overwrites_a_previously_cached_not_found():
-    """Exercises the self-healing backfill path: client.get_nutrition() re-fetching and
-    overwriting a stale/negative row must actually replace it, not just add a second one."""
+    """A re-fetch must replace the stale row, not add a second one."""
     usda_cache.set_cached_nutrition_not_found("1")
     usda_cache.set_cached_nutrition_found("1", APPLE_FOOD)
 

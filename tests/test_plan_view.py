@@ -1,10 +1,8 @@
-"""Tests for core.agent.plan_view: turning a flat PlanPropose into the meals-grouped,
-kcal-enriched dict ui.components.meal_plan / totals_row / guardrails_bar expect
-(see fixtures.demo_plan.DEMO_PLAN for the target shape).
+"""Tests for core.agent.plan_view: turning a flat PlanPropose into the
+meals-grouped, kcal-enriched dict ui.components expect.
 
-get_nutrition_tool is monkeypatched on the plan_view module itself (not on
-core.tools.usda_tool, where it's defined) -- same pattern as llm_adapter.agent_graph.build_graph
-in test_llm_adapter.py: patch the name where it's looked up, not where it's declared.
+get_nutrition_tool is monkeypatched on the plan_view module itself, not on
+core.tools.usda_tool where it's defined: patch the name where it's looked up.
 """
 from core.agent import plan_generator, plan_view
 from core.agent.llm_adapter import GenerationResult
@@ -14,9 +12,8 @@ from core.types import Goal, MealType
 
 
 class _FakeNutritionTool:
-    """Stands in for the StructuredTool get_nutrition_tool becomes after core.tools.usda_tool
-    adds @tool (see tests/test_usda_tool.py) -- plan_view.py now calls
-    get_nutrition_tool.invoke({"fdc_id": ...}), not get_nutrition_tool(fdc_id) directly."""
+    """Stands in for the StructuredTool get_nutrition_tool; plan_view calls
+    .invoke({"fdc_id": ...}), not the function directly."""
 
     def __init__(self, fn):
         self._fn = fn
@@ -117,7 +114,7 @@ def test_build_plan_view_falls_back_to_estimation_when_nutrition_lookup_fails(mo
     item = view["meals"][0]["items"][0]
     assert item["kcal"] == 0
     assert item["source_status"] == "warn"
-    assert item["source"] == "estimated — FDC unavailable"
+    assert item["source"] == "estimated (FDC unavailable)"
     assert view["total_kcal"] == 0
 
 
@@ -227,7 +224,7 @@ def test_build_plan_view_keeps_the_generic_banner_when_degraded_without_unresolv
     view = plan_view.build_plan_view(plan, target_kcal=2000.0, degraded=True)
 
     assert view["guardrails"] == [
-        {"status": "warn", "message": "Plan non-compliant after 2 attempts — check the total and excluded foods."}
+        {"status": "warn", "message": "Plan non-compliant after 2 attempts. Check the total and excluded foods."}
     ]
 
 

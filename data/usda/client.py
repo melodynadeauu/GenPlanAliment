@@ -35,7 +35,7 @@ load_dotenv()
 USDA_API_KEY = _require_api_key(os.getenv("USDA_API_KEY"))
 
 
-# 3 tentatives max = 1 initial attempt + MAX_RETRIES retries. Each list has one delay per retry.
+# MAX_RETRIES retries after the initial attempt; each list holds one delay per retry.
 RETRY_DELAYS_SECONDS = [1, 2]
 RATE_LIMIT_DELAYS_SECONDS = [2, 8]
 MAX_RETRIES = 2
@@ -131,11 +131,9 @@ def search_food(query: str, api_key: str) -> FoodLookupResult:
 
 
 def _is_stale(macros: dict) -> bool:
-    """A cached macros_per_100g is stale if it predates a MACRO_FIELDS addition (missing
-    a key), or if it was cached with kcal == 0.0 while another macro is non-zero -- the
-    old extract_macros only read nutrient "208" and silently zeroed kcal for foods that
-    report energy under a different field (see data.usda.nutrients). Either case is
-    worth one live refetch to self-heal."""
+    """Stale if it predates a MACRO_FIELDS addition, or has kcal == 0.0 while
+    another macro is non-zero (the old parser only read nutrient "208"). Either
+    case gets one live refetch."""
     if not (set(MACRO_FIELDS.values()) <= macros.keys()):
         return True
     other_macros_present = any(
@@ -145,13 +143,9 @@ def _is_stale(macros: dict) -> bool:
 
 
 def get_nutrition(fdc_id: str, api_key: str) -> FoodLookupResult:
-    """fdc_id, description and macros_per_100g for `fdc_id`, via the cache first.
-
-    A row cached before MACRO_FIELDS grew a new macro is missing it, and a row cached
-    with kcal == 0.0 despite other non-zero macros is likely a food whose energy USDA
-    reports under a field the parser didn't know about yet -- both are treated as
-    stale. One live call backfills/refreshes it, so the cache self-heals instead of
-    needing a manual wipe.
+    """fdc_id, description and macros_per_100g for `fdc_id`, via the cache
+    first. A stale cached row (see _is_stale) is refetched live and the cache
+    self-heals.
     """
     cached = get_cached_nutrition(fdc_id)
 

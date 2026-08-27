@@ -1,8 +1,5 @@
 """Extract macronutrients from a USDA FoodData Central foodNutrients list.
-
-Lives under data.usda, not core.nutrition -- this is a parser for USDA's response
-shape, not a nutrition domain calculation. `nutrient.number` in the API is a string,
-so the constants below are strings too.
+`nutrient.number` in the API is a string, so the constants below are too.
 """
 import warnings
 
@@ -11,8 +8,8 @@ PROTEIN_G = "203"
 FAT_G = "204"
 CARBS_G = "205"
 
-# Public (no leading underscore): data.usda.cache/client compare a cached entry's keys
-# against MACRO_FIELDS.values() to detect a row cached before a field was added here.
+# Public: cache/client compare cached keys against MACRO_FIELDS.values() to
+# detect stale rows.
 MACRO_FIELDS = {
     ENERGY_KCAL: "kcal",
     PROTEIN_G: "protein_g",
@@ -20,9 +17,8 @@ MACRO_FIELDS = {
     CARBS_G: "carbs_g",
 }
 
-# Many Foundation Foods omit nutrient number "208" entirely and report energy under one
-# of these instead. Checked in this order when "208" is absent -- id is matched first
-# (authoritative), number as a fallback for responses that omit "id".
+# Fallback energy fields when "208" is absent, checked in this order (id first,
+# then number).
 ENERGY_KCAL_ID = 1008  # same nutrient as number "208", keyed by id instead
 ATWATER_GENERAL_ID = 2047
 ATWATER_GENERAL_NUM = "957" 
@@ -33,9 +29,8 @@ KJ_PER_KCAL = 4.184
 
 
 def _find_energy_fallback_kcal(food_nutrients: list[dict]) -> float | None:
-    """Scan for a kcal value under one of the non-"208" energy fields, in priority
-    order (id 1008, then Atwater general, then Atwater specific, then kJ). Returns
-    None if none of them are present."""
+    """Kcal from a fallback energy field, in priority order (1008, Atwater
+    general, Atwater specific, kJ). None if none present."""
     by_key = {}
 
     for entry in food_nutrients:
@@ -62,24 +57,11 @@ def _find_energy_fallback_kcal(food_nutrients: list[dict]) -> float | None:
 
 
 def extract_macros(food_nutrients: list[dict]) -> dict:
-    """Pull kcal/protein/fat/carbs out of a `foodNutrients` list (the shape
-    returned by data.usda.client.get_nutrition() for /food/{fdcId}: each entry
-    has a "nutrient" dict with a "number" string, and an "amount" sibling key).
+    """Pull kcal/protein/fat/carbs (per 100g) out of a `foodNutrients` list.
 
-    Returns {"kcal": ..., "protein_g": ..., "fat_g": ..., "carbs_g": ...}.
-
-    These values are always per 100g of the food, regardless of dataType
-    (Branded, Foundation, SR Legacy, ...) -- that's an FDC convention, not a
-    unit to convert.
-
-    protein_g/fat_g/carbs_g missing from `food_nutrients` default to 0.0 and each
-    emits a warnings.warn. kcal has more fallbacks before that happens -- many
-    Foundation Foods omit nutrient number "208" and report energy only as id 1008,
-    Atwater General/Specific Factors (ids 2047/2048, numbers "957"/"958"), or
-    kJ (number "268"). If none of those are present either, kcal is estimated from
-    protein/fat/carbs via the Atwater formula (4*protein + 9*fat + 4*carbs) when at
-    least one of them was found; only if that's unavailable too does kcal default to
-    0.0 with a warning.
+    Missing protein/fat/carbs default to 0.0 with a warning. kcal falls back
+    through id 1008, Atwater factors, or kJ before being estimated via
+    4*protein + 9*fat + 4*carbs, and only then defaults to 0.0 with a warning.
     """
     macros = {field: 0.0 for field in MACRO_FIELDS.values()}
     found = set()

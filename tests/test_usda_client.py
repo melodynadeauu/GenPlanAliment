@@ -103,9 +103,7 @@ def test_search_food_caches_not_found_so_second_call_skips_network(monkeypatch):
 
 # --- get_nutrition ---
 
-# Real /food/2620254-shaped response, trimmed to the fields client.py reads. foodNutrients
-# carries far more than the four macros (sodium, cholesterol, vitamins, ...) -- only
-# kcal/protein/fat/carbs are extracted and cached, see data.usda.nutrients.MACRO_FIELDS.
+# Real /food/2620254-shaped response, trimmed to the fields client.py reads.
 FOOD_DETAIL_EXAMPLE = {
     "dataType": "Branded",
     "description": "NUT 'N BERRY MIX",
@@ -127,9 +125,8 @@ EXPECTED_FOOD = {
 
 
 def test_get_nutrition_returns_and_caches_only_the_four_extracted_macros(monkeypatch):
-    """Iron (and everything else in foodNutrients besides the four macros) is dropped --
-    it's never read anywhere downstream, and keeping it was the old cache's main source
-    of bloat (3.4MB for 48 entries)."""
+    """Iron (and everything else besides the four macros) is dropped; that
+    bloat was the old cache's main size driver."""
     calls = []
     monkeypatch.setattr(usda_client.requests, "get", make_fake_get(FOOD_DETAIL_EXAMPLE, calls))
 
@@ -184,9 +181,7 @@ def test_get_nutrition_caches_not_found_so_second_call_skips_network(monkeypatch
 
 
 def test_get_nutrition_backfills_a_row_cached_before_a_macro_field_existed(monkeypatch):
-    """A row cached by an older version of data.usda.nutrients.MACRO_FIELDS (missing a
-    field extract_macros now extracts) must not be trusted as-is -- one live call
-    refreshes it with the full current set of macros, then the cache is fresh again."""
+    """A row missing a macro added since it was cached triggers one live refresh."""
     calls = []
     monkeypatch.setattr(usda_client.requests, "get", make_fake_get(FOOD_DETAIL_EXAMPLE, calls))
     stale_food = {
@@ -204,10 +199,7 @@ def test_get_nutrition_backfills_a_row_cached_before_a_macro_field_existed(monke
 
 
 def test_get_nutrition_refetches_a_cached_zero_kcal_row_when_other_macros_are_nonzero(monkeypatch):
-    """A row cached by the old extract_macros (only read nutrient "208") has kcal == 0.0
-    for a food that actually has energy, just reported under a field it didn't know about
-    yet. Non-zero protein/fat/carbs alongside kcal == 0.0 is the tell -- refetch live once
-    so the cache self-heals instead of quietly keeping the wrong 0."""
+    """kcal == 0.0 alongside non-zero macros is the stale-cache tell; refetch live."""
     calls = []
     monkeypatch.setattr(usda_client.requests, "get", make_fake_get(FOOD_DETAIL_EXAMPLE, calls))
     stale_food = {
@@ -225,8 +217,8 @@ def test_get_nutrition_refetches_a_cached_zero_kcal_row_when_other_macros_are_no
 
 
 def test_get_nutrition_trusts_a_cached_row_with_genuinely_zero_kcal_and_zero_other_macros(monkeypatch):
-    """A food with kcal == 0.0 AND all other macros == 0.0 (e.g. water) is plausibly
-    correct, not stale -- must not trigger a refetch."""
+    """kcal == 0.0 with all other macros also 0.0 (e.g. water) is plausibly
+    correct, not stale."""
     calls = []
     monkeypatch.setattr(usda_client.requests, "get", make_fake_get(FOOD_DETAIL_EXAMPLE, calls))
     water_food = {

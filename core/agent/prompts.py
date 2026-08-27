@@ -1,7 +1,6 @@
-"""Prompt text handed to the LLM: fixed instructions (build_system_prompt) plus the
-per-request facts to plug into them (build_user_prompt). Pure string-building --
-no I/O, no tool calls -- kept separate from core.agent.llm_adapter so the wording
-can be read and changed without touching the tool-calling loop.
+"""Prompt text for the LLM: fixed instructions (build_system_prompt) plus
+per-request facts (build_user_prompt). Pure string-building, kept separate
+from core.agent.llm_adapter.
 """
 
 

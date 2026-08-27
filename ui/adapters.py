@@ -12,10 +12,7 @@ _GOAL_LABEL_TO_GOAL = {
 
 
 def weekday_from_ui_day(day: str) -> str:
-    """Validate a UI day name against Weekday and return its value -- the day keys
-    used across the UI (ui.components.top_bar, fixtures.demo_week) are already the
-    English Weekday values, so this just confirms `day` is a real one.
-    """
+    """Validate a UI day name against Weekday and return its value."""
     try:
         return Weekday(day).value
     except ValueError:
@@ -23,9 +20,8 @@ def weekday_from_ui_day(day: str) -> str:
 
 
 def profile_from_dict(profile: dict) -> Profile:
-    """Build a core.models.Profile from a profile dict shaped like
-    fixtures.demo_profile.DEMO_PROFILE (age, weight_kg, height_cm, goal label) --
-    in practice the current values from the sidebar's profile fields.
+    """Build a core.models.Profile from a dict shaped like
+    fixtures.demo_profile.DEMO_PROFILE.
     """
     try:
         goal = _GOAL_LABEL_TO_GOAL[profile["goal"]]

@@ -1,8 +1,6 @@
-"""Orchestrates one daily plan generation: load the day's activities and
-preferences, run the deterministic calorie pipeline, build the prompts, and hand off
-to llm_adapter.generate(). No error handling here -- llm_adapter.generate() already
-never raises and encodes any failure in GenerationResult.error; main.py decides what
-to display for success vs. error.
+"""Orchestrates one daily plan generation: activities/preferences -> calorie
+pipeline -> prompts -> llm_adapter.generate(). No error handling here;
+GenerationResult.error carries any failure.
 """
 import dataclasses
 
@@ -22,12 +20,9 @@ from data.preferences import store as preferences_store
 
 
 def generate_daily_plan(profile: Profile, day: str) -> GenerationResult:
-    """Generate a meal plan for `profile` on `day`.
-
-    Loads today's activities and food preferences, computes the calorie target via
-    the deterministic pipeline (BMR -> sedentary base -> + exercise -> TDEE -> goal
-    adjustment), builds the system/user prompts, and returns whatever
-    llm_adapter.generate() returns, unchanged.
+    """Generate a meal plan for `profile` on `day`: compute the calorie target
+    (BMR -> sedentary base -> + exercise -> TDEE -> goal), build the prompts, and
+    return llm_adapter.generate()'s result.
     """
     activities = activity_store.get_activities(day)
     prefs = preferences_store.load_preferences()
