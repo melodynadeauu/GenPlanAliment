@@ -1,9 +1,12 @@
 """LangGraph orchestration: the node graph described in docs/architecture.md.
 
-load_context -> agent/tools/collect_proposal (tool-calling loop) -> resolve_recompute
-(re-derives totals so no LLM number reaches the user) -> validate_guardrails (target
-conformity, disliked foods, unresolved fdc_ids), looping back to agent up to
-MAX_ATTEMPTS, then adjust_portions or degrade instead of showing a non-conforming plan.
+load_context -> agent/tools/collect_proposal (tool-calling loop, where the LLM can
+call compute_plan_total to check its own math) -> resolve_recompute (re-derives
+totals so no LLM number reaches the user) -> validate_guardrails (target conformity,
+disliked foods, unresolved fdc_ids). A calorie-only violation is rescaled for free via
+adjust_portions before any retry is spent; anything else (or a rescale that clamping
+couldn't fix) loops back to agent up to MAX_ATTEMPTS, then degrade instead of showing
+a non-conforming plan.
 """
 import json
 import time
@@ -37,12 +40,45 @@ ADJUST_MAX_FRACTION = 0.15
 # Rescaled portions are rounded to the nearest multiple of this many grams,
 # never below it.
 ADJUST_ROUND_GRAMS = 5
+# Rescaled portions are clamped to this range so adjust_portions never produces
+# an unrealistic serving (e.g. 5g of rice, or 900g of lettuce).
+MIN_GRAMS = 20.0
+MAX_GRAMS = 400.0
 
 
 @tool
 def submit_plan(foods: list[PlanFood]) -> str:
     """Submit the final, complete meal plan once all foods have been looked up."""
     return "ok"
+
+
+@tool
+def compute_plan_total(foods: list[dict]) -> dict:
+    """Compute the true total kcal for a draft list of foods, each a dict with
+    fdc_id and grams. Uses the same USDA lookup the final plan is checked
+    against, so this catches arithmetic mistakes before submit_plan does. Call
+    it as often as needed while drafting; it submits nothing.
+    Success: {"total_kcal", "unresolved_fdc_ids"} -- an fdc_id USDA doesn't
+    recognize is excluded from the total and listed there instead.
+    """
+    total_kcal = 0.0
+    unresolved_fdc_ids: list[str] = []
+    for food in foods:
+        kcal_per_100g = _lookup_kcal_per_100g(food["fdc_id"])
+        if kcal_per_100g is None:
+            unresolved_fdc_ids.append(food["fdc_id"])
+            continue
+        total_kcal += kcal_per_100g * (food["grams"] / 100)
+    return {"total_kcal": round(total_kcal, 1), "unresolved_fdc_ids": unresolved_fdc_ids}
+
+
+def _lookup_kcal_per_100g(fdc_id: str) -> float | None:
+    """kcal/100g for `fdc_id` via get_nutrition_tool, or None if USDA doesn't
+    recognize it."""
+    nutrition = get_nutrition_tool.invoke({"fdc_id": fdc_id})
+    if "error" in nutrition:
+        return None
+    return nutrition["macros_per_100g"]["kcal"]
 
 
 class AgentState(TypedDict):
@@ -67,8 +103,8 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
     """Compile the agent graph for one generate() call. `provider` supplies
     classify_exception().
     """
-    all_tools = [*data_tools, submit_plan]
-    tools_by_name = {t.name: t for t in data_tools}
+    all_tools = [*data_tools, compute_plan_total, submit_plan]
+    tools_by_name = {t.name: t for t in [*data_tools, compute_plan_total]}
     bound_auto = llm.bind_tools(all_tools)
     bound_forced = llm.bind_tools(all_tools, tool_choice=SUBMIT_PLAN_TOOL_NAME)
 
@@ -131,12 +167,11 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
         total_kcal = 0.0
         unresolved: list[str] = []
         for food in plan.foods:
-            nutrition = get_nutrition_tool.invoke({"fdc_id": food.fdc_id})
-            if "error" in nutrition:
+            kcal_per_100g = _lookup_kcal_per_100g(food.fdc_id)
+            if kcal_per_100g is None:
                 unresolved.append(f"{food.description} (fdc_id {food.fdc_id})")
                 continue  # unresolvable food: excluded from the total, flagged below
-            macros = nutrition["macros_per_100g"]
-            total_kcal += macros["kcal"] * (food.grams / 100)
+            total_kcal += kcal_per_100g * (food.grams / 100)
         return {"resolved_total_kcal": total_kcal, "unresolved": unresolved}
 
     def validate_guardrails_node(state: AgentState) -> dict:
@@ -180,15 +215,19 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
 
     def adjust_portions_node(state: AgentState) -> dict:
         """Scales every food's grams by target/total so the total lands on
-        target_kcal, instead of degrading. Runs at most once per generate() call;
-        a residual violation after rounding falls through to degrade.
+        target_kcal, clamped to [MIN_GRAMS, MAX_GRAMS] per food. Runs at most once
+        per generate() call; a residual violation after rounding/clamping falls
+        through to retry (or degrade once attempts are exhausted).
         """
         plan = state["plan"]
         total = state["resolved_total_kcal"]
         assert plan is not None
         assert total is not None
         factor = state["target_kcal"] / total
-        adjusted_foods = [food.model_copy(update={"grams": _round_grams(food.grams * factor)}) for food in plan.foods]
+        adjusted_foods = [
+            food.model_copy(update={"grams": _clamp_grams(_round_grams(food.grams * factor))})
+            for food in plan.foods
+        ]
         return {"plan": plan.model_copy(update={"foods": adjusted_foods}), "adjusted": True}
 
     def degrade_node(state: AgentState) -> dict:
@@ -221,9 +260,9 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
     def route_after_validate(state: AgentState) -> str:
         if not state["violations"]:
             return "finalize"
+        if state["adjustable"] and not state["adjusted"]:
+            return "adjust_portions"
         if state["attempt"] >= MAX_ATTEMPTS:
-            if not state["adjusted"] and state["adjustable"]:
-                return "adjust_portions"
             return "degrade"
         return "retry"
 
@@ -258,6 +297,11 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
 def _round_grams(grams: float) -> float:
     """Round to the nearest ADJUST_ROUND_GRAMS, never below it."""
     return max(float(ADJUST_ROUND_GRAMS), round(grams / ADJUST_ROUND_GRAMS) * ADJUST_ROUND_GRAMS)
+
+
+def _clamp_grams(grams: float) -> float:
+    """Keep a rescaled portion within [MIN_GRAMS, MAX_GRAMS]."""
+    return min(MAX_GRAMS, max(MIN_GRAMS, grams))
 
 
 def _invoke_with_retry(bound_llm, messages, provider):

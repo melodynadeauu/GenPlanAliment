@@ -406,10 +406,11 @@ def test_unresolvable_fdc_id_exhausts_retries_and_degrades(monkeypatch):
 # violation is a calorie gap within ADJUST_MAX_FRACTION ---
 
 
-def test_calorie_violation_within_adjust_cap_adjusts_portions_instead_of_degrading():
+def test_calorie_violation_within_adjust_cap_adjusts_portions_on_the_first_attempt():
     """APPLE (100g -> 100 kcal), target=113: a 13% gap, within ADJUST_MAX_FRACTION
-    (15%). Scaled by 113/100 and rounded to the nearest 5g -> 115g -> 115 kcal."""
-    model = FakeChatModel([ai_message([submit_call(str(i), [APPLE])]) for i in range(agent_graph.MAX_ATTEMPTS)])
+    (15%). Scaled by 113/100 and rounded to the nearest 5g -> 115g -> 115 kcal.
+    Rescale is tried before any retry, so a single LLM call is enough."""
+    model = FakeChatModel([ai_message([submit_call("0", [APPLE])])])
     compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
 
     result = compiled.invoke(_initial_state(target_kcal=113.0), config={"recursion_limit": 50})
@@ -419,6 +420,7 @@ def test_calorie_violation_within_adjust_cap_adjusts_portions_instead_of_degradi
     assert result["adjusted"] is True
     assert result["plan"].foods[0].grams == 115.0
     assert result["resolved_total_kcal"] == pytest.approx(115.0)
+    assert len(model.calls) == 1
 
 
 def test_calorie_violation_beyond_adjust_cap_still_degrades():
@@ -462,3 +464,62 @@ def test_adjust_portions_not_applied_when_unresolved_food_also_violates(monkeypa
     assert result["error"] is None
     assert result["degraded"] is True
     assert result["adjusted"] is False
+
+
+def test_adjust_portions_clamps_grams_and_falls_back_to_retry_when_clamp_breaks_target():
+    """390g (-> 390 kcal), target=449: a 13% gap, within ADJUST_MAX_FRACTION. The
+    exact rescale would need 450g, above MAX_GRAMS -- so it's clamped to 400g,
+    which lands on 400 kcal, still outside TARGET_TOLERANCE_FRACTION. adjust_portions
+    only runs once, so this falls back to retry instead of re-adjusting; the
+    retried plan (449g exactly) then finalizes clean."""
+    big_portion = {"description": "Big Portion", "fdc_id": "1", "meal": "snack", "grams": 390.0}
+    fixed_portion = {"description": "Big Portion", "fdc_id": "1", "meal": "snack", "grams": 449.0}
+    model = FakeChatModel(
+        [ai_message([submit_call("0", [big_portion])]), ai_message([submit_call("1", [fixed_portion])])]
+    )
+    compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
+
+    result = compiled.invoke(_initial_state(target_kcal=449.0), config={"recursion_limit": 50})
+
+    assert result["error"] is None
+    assert result["degraded"] is False
+    assert result["adjusted"] is True
+    assert result["plan"].foods[0].grams == 449.0
+    assert result["resolved_total_kcal"] == pytest.approx(449.0)
+    assert len(model.calls) == 2
+
+
+# --- compute_plan_total: lets the LLM verify its arithmetic before submit_plan ---
+
+
+def test_compute_plan_total_returns_the_resolved_kcal_total_for_a_draft_list():
+    result = agent_graph.compute_plan_total.invoke({"foods": [{"fdc_id": "1", "grams": 200.0}]})
+
+    assert result == {"total_kcal": 200.0, "unresolved_fdc_ids": []}
+
+
+def test_compute_plan_total_reports_unresolved_fdc_ids_without_erroring(monkeypatch):
+    monkeypatch.setattr(agent_graph, "get_nutrition_tool", _FakeNutritionToolByFdcId(known=[]))
+
+    result = agent_graph.compute_plan_total.invoke({"foods": [{"fdc_id": "999", "grams": 100.0}]})
+
+    assert result == {"total_kcal": 0.0, "unresolved_fdc_ids": ["999"]}
+
+
+def test_agent_can_call_compute_plan_total_before_submitting_the_plan():
+    """The LLM can check its math via compute_plan_total mid-loop; it executes
+    like any other data tool and doesn't short-circuit submit_plan."""
+    model = FakeChatModel(
+        [
+            ai_message([data_call("0", "compute_plan_total", {"foods": [{"fdc_id": "1", "grams": 100.0}]})]),
+            ai_message([submit_call("1", [APPLE])]),
+        ]
+    )
+    compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
+
+    result = compiled.invoke(_initial_state(target_kcal=100.0), config={"recursion_limit": 50})
+
+    assert result["error"] is None
+    assert result["degraded"] is False
+    compute_call_result = next(m for m in _tool_messages(result) if m.name == "compute_plan_total")
+    assert json.loads(compute_call_result.content) == {"total_kcal": 100.0, "unresolved_fdc_ids": []}
