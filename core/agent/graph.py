@@ -1,6 +1,6 @@
 """LangGraph orchestration: the node graph described in docs/architecture.md.
 
-load_context -> agent/tools/collect_proposal (tool-calling loop, where the LLM can
+agent/tools/collect_proposal (tool-calling loop, where the LLM can
 call compute_plan_total to check its own math) -> resolve_recompute (re-derives
 totals so no LLM number reaches the user) -> validate_guardrails (target conformity,
 disliked foods, unresolved fdc_ids). A calorie-only violation is rescaled for free via
@@ -107,12 +107,6 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
     tools_by_name = {t.name: t for t in [*data_tools, compute_plan_total]}
     bound_auto = llm.bind_tools(all_tools)
     bound_forced = llm.bind_tools(all_tools, tool_choice=SUBMIT_PLAN_TOOL_NAME)
-
-    def load_context_node(state: AgentState) -> dict:
-        """Pass-through; inputs are already validated at construction. Its own
-        node so the graph shape matches the architecture diagram.
-        """
-        return {}
 
     def agent_node(state: AgentState) -> dict:
         bound = bound_forced if state["turn"] >= MAX_AUTO_TURNS else bound_auto
@@ -267,7 +261,6 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
         return "retry"
 
     graph = StateGraph(AgentState)
-    graph.add_node("load_context", load_context_node)
     graph.add_node("agent", agent_node)
     graph.add_node("tools", tools_node)
     graph.add_node("collect_proposal", collect_proposal_node)
@@ -277,8 +270,7 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
     graph.add_node("adjust_portions", adjust_portions_node)
     graph.add_node("degrade", degrade_node)
 
-    graph.add_edge(START, "load_context")
-    graph.add_edge("load_context", "agent")
+    graph.add_edge(START, "agent")
     graph.add_conditional_edges("agent", route_after_agent)
     graph.add_edge("tools", "agent")
     graph.add_conditional_edges("collect_proposal", route_after_collect)

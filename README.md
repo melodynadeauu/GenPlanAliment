@@ -81,8 +81,7 @@ One LangGraph graph per `generate()` call (`core/agent/graph.py`):
 
 ```mermaid
 flowchart TD
-    START --> load_context
-    load_context --> agent
+    START --> agent
     agent -->|tool calls| tools
     tools --> agent
     agent -->|submit_plan| collect_proposal
