@@ -9,6 +9,8 @@ KEY_ACTIVE_PREF_TAB = "active_pref_tab"
 KEY_GENERATED_PLAN = "generated_plan"
 KEY_PLAN_DAY = "generated_plan_day"
 KEY_IS_GENERATING = "is_generating"
+KEY_GENERATING_DAY = "generating_day"
+KEY_GENERATION_ERROR = "generation_error"
 KEY_PROFILE_AGE = "profile_age"
 KEY_PROFILE_WEIGHT = "profile_weight"
 KEY_PROFILE_HEIGHT = "profile_height"
@@ -21,6 +23,8 @@ DEFAULTS = {
     KEY_GENERATED_PLAN: None,
     KEY_PLAN_DAY: None,
     KEY_IS_GENERATING: False,
+    KEY_GENERATING_DAY: None,
+    KEY_GENERATION_ERROR: None,
     KEY_PROFILE_AGE: DEMO_PROFILE["age"],
     KEY_PROFILE_WEIGHT: DEMO_PROFILE["weight_kg"],
     KEY_PROFILE_HEIGHT: DEMO_PROFILE["height_cm"],

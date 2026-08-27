@@ -45,12 +45,15 @@ def _card_html(label: str, glyph: str, short: str, meta: str, burn_text: str,
     )
 
 
-def render_week_strip(week: list[dict], profile: Profile) -> str:
+def render_week_strip(week: list[dict], profile: Profile, disabled: bool = False) -> str:
     """Render the seven day cards and return the selected day name.
 
     Args:
         week: fixtures.demo_week.DEMO_WEEK rows (fallback when the DB is empty).
         profile: used only to price each day's activity in kcal.
+        disabled: True while a plan is generating -- the day buttons and the
+            expand/collapse toggle are disabled so a click can't fire a rerun
+            that cancels the in-flight generation.
     """
     expanded = st.session_state.get(KEY_WEEK_EXPANDED, False)
     toggle_glyph = icon("chevron-up", 14) if expanded else icon("chevron-down", 14)
@@ -73,6 +76,7 @@ def render_week_strip(week: list[dict], profile: Profile) -> str:
                     "Toggle training week details",
                     key="week_expand_btn",
                     on_click=_toggle_week_expand,
+                    disabled=disabled,
                 )
 
     columns = st.columns(7, gap="small")
@@ -133,6 +137,7 @@ def render_week_strip(week: list[dict], profile: Profile) -> str:
                     width="stretch",
                     on_click=_on_day_click,
                     args=(day_name,),
+                    disabled=disabled,
                 )
 
     return st.session_state[KEY_SELECTED_DAY]

@@ -3,8 +3,12 @@
 import streamlit as st
 
 
-def render_masthead() -> tuple[bool, bool]:
+def render_masthead(disabled: bool = False) -> tuple[bool, bool]:
     """Render the fixed masthead row.
+
+    Args:
+        disabled: True while a plan is generating -- both buttons are disabled so a
+            click can't fire a rerun that cancels the in-flight generation.
 
     Returns:
         (generate_clicked, demo_clicked) -- demo reloads fixtures.demo_plan.DEMO_PLAN
@@ -27,6 +31,7 @@ def render_masthead() -> tuple[bool, bool]:
                 key="generate_plan_btn",
                 width="stretch",
                 help="Builds meals for the selected day from your profile, activity and preferences.",
+                disabled=disabled,
             )
 
         with demo_col:
@@ -35,6 +40,7 @@ def render_masthead() -> tuple[bool, bool]:
                 key="demo_plan_btn",
                 width="stretch",
                 help="Loads a ready-made example plan, without generating one.",
+                disabled=disabled,
             )
 
     return generate_clicked, demo_clicked

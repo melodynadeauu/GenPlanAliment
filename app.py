@@ -15,6 +15,9 @@ from ui.state import (
     KEY_SELECTED_DAY,
     KEY_GENERATED_PLAN,
     KEY_PLAN_DAY,
+    KEY_IS_GENERATING,
+    KEY_GENERATING_DAY,
+    KEY_GENERATION_ERROR,
     KEY_PROFILE_AGE,
     KEY_PROFILE_WEIGHT,
     KEY_PROFILE_HEIGHT,
@@ -62,15 +65,20 @@ def main() -> None:
     configure_page()
     init_state()
 
+    # Widgets that could fire a rerun mid-generation (and cancel the in-flight
+    # LLM call) are rendered disabled for as long as this flag is set. See the
+    # `is_generating` block below for the two-rerun sequence this drives.
+    is_generating = st.session_state[KEY_IS_GENERATING]
+
     with st.sidebar:
-        render_profile_section()
+        render_profile_section(disabled=is_generating)
         st.divider()
-        render_preferences_section()
+        render_preferences_section(disabled=is_generating)
 
     profile = _current_profile()
 
-    generate_clicked, demo_clicked = render_masthead()
-    selected_day = render_week_strip(DEMO_WEEK, profile)
+    generate_clicked, demo_clicked = render_masthead(disabled=is_generating)
+    selected_day = render_week_strip(DEMO_WEEK, profile, disabled=is_generating)
     st.session_state[KEY_SELECTED_DAY] = selected_day
 
     day_entry = next((d for d in DEMO_WEEK if d["day"] == selected_day), DEMO_WEEK[0])
@@ -78,21 +86,45 @@ def main() -> None:
     target_kcal = render_energy_chain(profile, day_entry["label"], activity_rows)
 
     # D1 (quota fallback): loads the pre-generated fixture, no LLM/network call.
-    if demo_clicked:
+    if demo_clicked and not is_generating:
         st.session_state[KEY_GENERATED_PLAN] = DEMO_PLAN
         st.session_state[KEY_PLAN_DAY] = DEMO_PLAN.get("day", selected_day)
 
-    if generate_clicked:
-        day = adapters.weekday_from_ui_day(selected_day)
-        with st.spinner(f"Building {day_entry['label'].title()}'s meals — "
+    if generate_clicked and not is_generating:
+        # Don't generate inline: the widgets above have already rendered enabled
+        # for this run, so disabling them now wouldn't reach the browser until
+        # after the (blocking) generation call finishes. Flip the flag, snapshot
+        # the day, and rerun -- the *next* run renders everything disabled
+        # before the actual generation starts.
+        st.session_state[KEY_IS_GENERATING] = True
+        st.session_state[KEY_GENERATING_DAY] = selected_day
+        st.rerun()
+
+    if is_generating:
+        generating_day = st.session_state[KEY_GENERATING_DAY]
+        generating_entry = next(
+            (d for d in DEMO_WEEK if d["day"] == generating_day), day_entry
+        )
+        day = adapters.weekday_from_ui_day(generating_day)
+        with st.spinner(f"Building {generating_entry['label'].title()}'s meals — "
                         f"searching USDA foods and checking guardrails…"):
             view, error = plan_view.generate_daily_plan_view(profile, day)
 
         if error:
-            st.error(ERROR_MESSAGES.get(error, error))
+            st.session_state[KEY_GENERATION_ERROR] = error
         else:
             st.session_state[KEY_GENERATED_PLAN] = view
-            st.session_state[KEY_PLAN_DAY] = selected_day
+            st.session_state[KEY_PLAN_DAY] = generating_day
+            st.session_state[KEY_GENERATION_ERROR] = None
+
+        st.session_state[KEY_IS_GENERATING] = False
+        st.session_state[KEY_GENERATING_DAY] = None
+        st.rerun()
+
+    generation_error = st.session_state[KEY_GENERATION_ERROR]
+    if generation_error:
+        st.error(ERROR_MESSAGES.get(generation_error, generation_error))
+        st.session_state[KEY_GENERATION_ERROR] = None
 
     st.markdown('<div class="am-rule"></div>', unsafe_allow_html=True)
 

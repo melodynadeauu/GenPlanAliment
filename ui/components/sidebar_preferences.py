@@ -64,12 +64,17 @@ def _on_items_changed(tab: str, likes: list[str], dislikes: list[str]) -> None:
     st.session_state[_ERROR_KEY] = None
 
 
-def render_preferences_section() -> None:
+def render_preferences_section(disabled: bool = False) -> None:
     """Render the segmented tab + editable chip list (add/remove) for the active tab.
 
     Reads preferences fresh from the JSON file on every run and saves an edit back
     immediately -- so the next plan generation (core.agent.plan_generator, which also
     reads the JSON file) picks it up.
+
+    Args:
+        disabled: True while a plan is generating -- the tab buttons and the chip
+            editor are disabled so an edit can't fire a rerun that cancels the
+            in-flight generation.
 
     Reads/writes session_state:
         - KEY_ACTIVE_PREF_TAB: "likes" or "dislikes"
@@ -91,6 +96,7 @@ def render_preferences_section() -> None:
             type="primary" if active_tab == "likes" else "secondary",
             on_click=_on_pref_tab_click,
             args=("likes",),
+            disabled=disabled,
         )
     with tab_col2:
         st.button(
@@ -99,6 +105,7 @@ def render_preferences_section() -> None:
             type="primary" if active_tab == "dislikes" else "secondary",
             on_click=_on_pref_tab_click,
             args=("dislikes",),
+            disabled=disabled,
         )
 
     # Re-read: the callback above has already run for this rerun.
@@ -133,6 +140,7 @@ def render_preferences_section() -> None:
         key=key,
         on_change=_on_items_changed,
         args=(active_tab, likes, dislikes),
+        disabled=disabled,
     )
 
     # Surfaced here, not in the callback: st.error inside an on_change callback
