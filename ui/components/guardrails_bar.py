@@ -9,13 +9,14 @@ def render_guardrails_bar(plan: dict | None) -> None:
     Args:
         plan: Generated meal plan dict or None
 
-    Renders nothing but the disclaimer if plan is None.
+    Renders guardrails section only if there are guardrails to display.
+    Always renders the disclaimer.
     """
+    # Only render Guardrails section if plan exists and has guardrails
     if plan is not None:
-        st.markdown("### Guardrails")
-
         guardrails = plan.get("guardrails", [])
         if guardrails:
+            st.markdown("### Guardrails")
             badge_html = ""
             for guardrail in guardrails:
                 status = guardrail.get("status", "ok")
@@ -30,6 +31,7 @@ def render_guardrails_bar(plan: dict | None) -> None:
 
             st.markdown(badge_html, unsafe_allow_html=True)
 
+    # Always show disclaimer
     st.markdown(
         "---\n"
         "**Disclaimer:** This is not medical advice. "

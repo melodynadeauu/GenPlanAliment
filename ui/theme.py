@@ -8,8 +8,8 @@ COLORS = {
     "ink_2": "#4b5a56",
     "line": "#d7e0dd",
     "line_strong": "#b9c7c3",
-    "accent": "#0e6a5a",
-    "accent_ink": "#0a5245",
+    "accent": "#138572",
+    "accent_ink": "#084036",
     "accent_soft": "#e0eeeb",
     "ochre": "#8a6412",
     "ochre_soft": "#f5eedd",
@@ -53,9 +53,13 @@ def build_global_css() -> str:
     /* Remove Streamlit default padding */
     .block-container {{
         padding-top: 1rem;
-        padding-left: 2rem;
-        padding-right: 2rem;
+        padding-left: 3rem;
+        padding-right: 3rem;
         padding-bottom: 1rem;
+    }}
+
+   section[data-testid="stSidebar"] {{
+        width: 400px !important;
     }}
 
     /* Primary button styling */
@@ -70,6 +74,12 @@ def build_global_css() -> str:
 
     .stButton > button:hover {{
         background-color: {COLORS['accent_ink']};
+    }}
+
+    .stButton > button[data-testid="stBaseButton-primary"] {{
+        background-color: {COLORS['accent_ink']} !important;
+        color: {COLORS['surface']} !important;
+        border-color: {COLORS['accent_ink']} !important;
     }}
 
     /* Day selector pill styling */
@@ -158,6 +168,19 @@ def build_global_css() -> str:
     /* Number input styling */
     .stNumberInput > div > div > input {{
         border-radius: {RADIUS};
+    }}
+
+    div[data-testid="stNumberInput"] button {{
+        display: none !important;
+    }}
+
+    div[data-testid="stNumberInput"] input[type="number"]::-webkit-outer-spin-button,
+    div[data-testid="stNumberInput"] input[type="number"]::-webkit-inner-spin-button {{
+        -webkit-appearance: none !important;
+        margin: 0 !important;
+    }}
+    div[data-testid="stNumberInput"] input[type="number"] {{
+        -moz-appearance: textfield !important;
     }}
 
     /* Selectbox styling */

@@ -6,7 +6,7 @@ def render_meal_plan(plan: dict | None) -> None:
     st.markdown("### Meal plan")
 
     if plan is None:
-        st.info("No plan generated yet — click *Generate plan*.")
+        st.info("No plan generated yet. Click *Generate plan*.")
         return
 
     with st.container(border=False):

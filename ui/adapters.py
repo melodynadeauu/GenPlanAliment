@@ -4,8 +4,6 @@ core.agent.plan_generator expects.
 from core.models import Profile
 from core.types import Goal, Weekday
 
-# The sidebar's goal selectbox (ui.components.sidebar_profile) stores its value as
-# the display label shown to the user, not the Goal enum value.
 _GOAL_LABEL_TO_GOAL = {
     "Weight loss": Goal.WEIGHT_LOSS,
     "Muscle gain": Goal.MUSCLE_GAIN,

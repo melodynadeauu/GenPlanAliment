@@ -18,8 +18,6 @@ DEFAULTS = {
     KEY_ACTIVE_PREF_TAB: "likes",
     KEY_GENERATED_PLAN: None,
     KEY_IS_GENERATING: False,
-    # Profile fields seed from DEMO_PROFILE on first run, then live entirely in
-    # session_state — the user can edit them from there on (see sidebar_profile.py).
     KEY_PROFILE_AGE: DEMO_PROFILE["age"],
     KEY_PROFILE_WEIGHT: DEMO_PROFILE["weight_kg"],
     KEY_PROFILE_HEIGHT: DEMO_PROFILE["height_cm"],

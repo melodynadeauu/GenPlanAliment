@@ -10,6 +10,12 @@ from ui.state import KEY_ACTIVE_PREF_TAB
 _TAB_LABELS = {"likes": "Likes", "dislikes": "Dislikes"}
 
 
+# Callback to update active preference tab immediately on click
+def _on_pref_tab_click(tab_name: str) -> None:
+    """Update active preference tab in session state when tab button is clicked."""
+    st.session_state[KEY_ACTIVE_PREF_TAB] = tab_name
+
+
 def render_preferences_section() -> None:
     """Render the segmented tab + editable chip list (add/remove) for the active tab.
 
@@ -30,11 +36,27 @@ def render_preferences_section() -> None:
 
     tab_col1, tab_col2 = st.columns(2)
     with tab_col1:
-        if st.button(f"Likes ({len(likes)})", width="stretch"):
-            st.session_state[KEY_ACTIVE_PREF_TAB] = "likes"
+        # Show "Likes" tab with primary style if active, secondary if not
+        # Use callback to update selection immediately on first click
+        button_type = "primary" if active_tab == "likes" else "secondary"
+        st.button(
+            f"Likes ({len(likes)})",
+            width="stretch",
+            type=button_type,
+            on_click=_on_pref_tab_click,
+            args=("likes",)
+        )
     with tab_col2:
-        if st.button(f"Dislikes ({len(dislikes)})", width="stretch"):
-            st.session_state[KEY_ACTIVE_PREF_TAB] = "dislikes"
+        # Show "Dislikes" tab with primary style if active, secondary if not
+        # Use callback to update selection immediately on first click
+        button_type = "primary" if active_tab == "dislikes" else "secondary"
+        st.button(
+            f"Dislikes ({len(dislikes)})",
+            width="stretch",
+            type=button_type,
+            on_click=_on_pref_tab_click,
+            args=("dislikes",)
+        )
 
     # Reread session state after button click
     active_tab = st.session_state.get(KEY_ACTIVE_PREF_TAB, "likes")
