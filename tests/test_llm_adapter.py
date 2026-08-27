@@ -32,7 +32,7 @@ def fake_build_graph(monkeypatch):
 
 def test_generate_returns_the_plan_from_the_final_state_on_success(fake_build_graph):
     plan = PlanPropose(foods=[PlanFood(description="Apple", fdc_id="1", meal="snack", grams=100.0)])
-    fake_build_graph({"plan": plan, "error": None, "degraded": False})
+    fake_build_graph({"plan": plan, "error": None, "degraded": False, "adjusted": False})
 
     result = llm_adapter.generate("system", "user", [], target_kcal=100.0, dislikes=[])
 
@@ -50,11 +50,23 @@ def test_generate_returns_the_error_from_the_final_state(fake_build_graph, error
 
 def test_generate_returns_degraded_true_when_the_graph_exhausted_its_retries(fake_build_graph):
     plan = PlanPropose(foods=[PlanFood(description="Apple", fdc_id="1", meal="snack", grams=100.0)])
-    fake_build_graph({"plan": plan, "error": None, "degraded": True})
+    fake_build_graph({"plan": plan, "error": None, "degraded": True, "adjusted": False})
 
     result = llm_adapter.generate("system", "user", [], target_kcal=100.0, dislikes=[])
 
     assert result == llm_adapter.GenerationResult(plan, None, degraded=True)
+
+
+def test_generate_returns_adjusted_true_when_the_graph_scaled_portions(fake_build_graph):
+    """G7 business-rule fallback: the graph rescaled grams to hit target_kcal instead of
+    degrading -- generate() must surface that as adjusted=True so plan_view can show a
+    distinct, non-alarming banner instead of the degraded warning."""
+    plan = PlanPropose(foods=[PlanFood(description="Apple", fdc_id="1", meal="snack", grams=115.0)])
+    fake_build_graph({"plan": plan, "error": None, "degraded": False, "adjusted": True})
+
+    result = llm_adapter.generate("system", "user", [], target_kcal=113.0, dislikes=[])
+
+    assert result == llm_adapter.GenerationResult(plan, None, adjusted=True)
 
 
 def test_generate_builds_the_initial_state_with_system_and_user_messages(fake_build_graph):
@@ -75,6 +87,7 @@ def test_generate_builds_the_initial_state_with_system_and_user_messages(fake_bu
     assert initial_state["dislikes"] == ["mushrooms"]
     assert initial_state["attempt"] == 1
     assert initial_state["degraded"] is False
+    assert initial_state["adjusted"] is False
     assert config["recursion_limit"] >= 50
 
 

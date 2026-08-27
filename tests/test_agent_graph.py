@@ -128,6 +128,8 @@ def _initial_state(target_kcal=0.0, dislikes=None):
         "attempt": 1,
         "degraded": False,
         "violations": [],
+        "adjustable": False,
+        "adjusted": False,
     }
 
 
@@ -409,3 +411,71 @@ def test_unresolvable_fdc_id_exhausts_retries_and_degrades(monkeypatch):
     assert result["error"] is None
     assert result["degraded"] is True
     assert result["attempt"] == agent_graph.MAX_ATTEMPTS
+
+
+# --- adjust_portions: business-rule fallback for G1-only violations that exhaust
+# MAX_ATTEMPTS but stay within ADJUST_MAX_FRACTION -- scale grams instead of degrading. ---
+
+
+def test_calorie_violation_within_adjust_cap_adjusts_portions_instead_of_degrading():
+    """APPLE is 100g resolving to 100 kcal (fake_nutrition_lookup). target=113 needs a
+    13% correction -- a G1 violation (over TARGET_TOLERANCE_FRACTION=10%) but within
+    ADJUST_MAX_FRACTION=15%. Once MAX_ATTEMPTS is exhausted, scale grams by
+    target/total (113/100=1.13) instead of degrading: 100*1.13=113, rounded to the
+    nearest 5g -> 115g -> 115 kcal, back within tolerance of 113."""
+    model = FakeChatModel([ai_message([submit_call(str(i), [APPLE])]) for i in range(agent_graph.MAX_ATTEMPTS)])
+    compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
+
+    result = compiled.invoke(_initial_state(target_kcal=113.0), config={"recursion_limit": 50})
+
+    assert result["error"] is None
+    assert result["degraded"] is False
+    assert result["adjusted"] is True
+    assert result["plan"].foods[0].grams == 115.0
+    assert result["resolved_total_kcal"] == pytest.approx(115.0)
+
+
+def test_calorie_violation_beyond_adjust_cap_still_degrades():
+    """target=200 needs a 100% correction -- a G1 violation far beyond
+    ADJUST_MAX_FRACTION=15%. Forcing that scale would produce an unrealistic portion, so
+    this still degrades exactly like before adjust_portions existed."""
+    model = FakeChatModel([ai_message([submit_call(str(i), [APPLE])]) for i in range(agent_graph.MAX_ATTEMPTS)])
+    compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
+
+    result = compiled.invoke(_initial_state(target_kcal=200.0), config={"recursion_limit": 50})
+
+    assert result["error"] is None
+    assert result["degraded"] is True
+    assert result["adjusted"] is False
+    assert result["plan"].foods[0].grams == 100.0  # untouched
+
+
+def test_adjust_portions_not_applied_when_disliked_food_also_violates():
+    """Rescaling grams can't fix a disliked-food violation -- even though the calorie
+    gap alone (113 vs 100, 13%) would be adjustable, the plan must still degrade."""
+    model = FakeChatModel([ai_message([submit_call(str(i), [APPLE])]) for i in range(agent_graph.MAX_ATTEMPTS)])
+    compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
+
+    result = compiled.invoke(
+        _initial_state(target_kcal=113.0, dislikes=["apple"]), config={"recursion_limit": 50}
+    )
+
+    assert result["error"] is None
+    assert result["degraded"] is True
+    assert result["adjusted"] is False
+
+
+def test_adjust_portions_not_applied_when_unresolved_food_also_violates(monkeypatch):
+    """Rescaling grams can't fix an unresolved fdc_id either -- the plan must still
+    degrade even though a G1 violation is also present (an unresolved food is excluded
+    from the total, which itself pulls the total away from target)."""
+    ghost = {"description": "Mystery Food", "fdc_id": "999", "meal": "snack", "grams": 100.0}
+    monkeypatch.setattr(agent_graph, "get_nutrition_tool", _FakeNutritionToolByFdcId(known=[]))
+    model = FakeChatModel([ai_message([submit_call(str(i), [ghost])]) for i in range(agent_graph.MAX_ATTEMPTS)])
+    compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
+
+    result = compiled.invoke(_initial_state(target_kcal=100.0), config={"recursion_limit": 50})
+
+    assert result["error"] is None
+    assert result["degraded"] is True
+    assert result["adjusted"] is False

@@ -33,15 +33,23 @@ def generate_daily_plan_view(profile: Profile, day: str) -> tuple[dict | None, s
         return None, result.error
     assert result.plan is not None
     assert result.target_kcal is not None
-    return build_plan_view(result.plan, result.target_kcal, degraded=result.degraded), None
+    return (
+        build_plan_view(result.plan, result.target_kcal, degraded=result.degraded, adjusted=result.adjusted),
+        None,
+    )
 
 
-def build_plan_view(plan: PlanPropose, target_kcal: float, degraded: bool = False) -> dict:
+def build_plan_view(plan: PlanPropose, target_kcal: float, degraded: bool = False, adjusted: bool = False) -> dict:
     """Group `plan.foods` by meal and enrich each with a fresh kcal lookup. Never
     raises: a food whose lookup fails is kept with kcal=0 and a "warn" status.
 
     `degraded` (G7: the graph exhausted its guardrail-retry attempts) surfaces as a
     "warn" guardrail entry instead of silently showing a non-conforming plan.
+
+    `adjusted` (G7 business-rule fallback: grams were rescaled to hit target_kcal
+    instead of degrading) surfaces as a distinct, non-alarming "info" guardrail entry.
+    Mutually exclusive with `degraded` by construction -- checked in that order anyway,
+    `degraded` taking priority, so a caller passing both by mistake still gets a warning.
     """
     items_by_meal: dict[MealType, list[dict]] = {meal: [] for meal in MEAL_ORDER}
     total_kcal = 0.0
@@ -78,6 +86,13 @@ def build_plan_view(plan: PlanPropose, target_kcal: float, degraded: bool = Fals
         else:
             message = "Plan non-compliant after 2 attempts — check the total and excluded foods."
         guardrails = [{"status": "warn", "message": message}]
+    elif adjusted:
+        guardrails = [
+            {
+                "status": "info",
+                "message": "Portions adjusted automatically to meet the calorie target.",
+            }
+        ]
 
     return {
         "target_kcal": target_kcal,

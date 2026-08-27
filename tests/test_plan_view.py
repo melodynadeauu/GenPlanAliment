@@ -231,6 +231,33 @@ def test_build_plan_view_keeps_the_generic_banner_when_degraded_without_unresolv
     ]
 
 
+def test_build_plan_view_flags_adjusted_plan_with_an_info_guardrail(monkeypatch):
+    """G7 business-rule fallback: portions rescaled to hit target_kcal get a distinct,
+    non-alarming "info" banner -- not the "warn" one degraded plans get."""
+    monkeypatch.setattr(plan_view, "get_nutrition_tool", _FakeNutritionTool(lambda fdc_id: APPLE_NUTRITION))
+    plan = PlanPropose(foods=[PlanFood(description="Apple, raw", fdc_id="1", meal=MealType.SNACK, grams=115.0)])
+
+    view = plan_view.build_plan_view(plan, target_kcal=2000.0, adjusted=True)
+
+    assert len(view["guardrails"]) == 1
+    assert view["guardrails"][0]["status"] == "info"
+
+
+def test_generate_daily_plan_view_passes_adjusted_through(monkeypatch):
+    plan = PlanPropose(foods=[])
+    monkeypatch.setattr(
+        plan_generator,
+        "generate_daily_plan",
+        lambda profile, day: GenerationResult(plan, None, target_kcal=2000.0, adjusted=True),
+    )
+
+    view, error = plan_view.generate_daily_plan_view(PROFILE, "monday")
+
+    assert error is None
+    assert len(view["guardrails"]) == 1
+    assert view["guardrails"][0]["status"] == "info"
+
+
 def test_generate_daily_plan_view_returns_no_view_and_the_error_on_failure(monkeypatch):
     monkeypatch.setattr(
         plan_generator,

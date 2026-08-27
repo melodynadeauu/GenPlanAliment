@@ -49,12 +49,18 @@ class GenerationResult:
     degraded is True when the graph exhausted its guardrail-violation retries (G7) and
     returned the last attempted plan anyway, with the violation visible via plan_view's
     guardrails list rather than silently hidden.
+
+    adjusted is True when the graph instead resolved the exhausted retries via the G7
+    business-rule fallback: grams were rescaled to hit target_kcal rather than showing a
+    degraded plan. Mutually exclusive with degraded by construction (see
+    core.agent.graph.route_after_validate).
     """
 
     plan: PlanPropose | None
     error: str | None
     target_kcal: float | None = None
     degraded: bool = False
+    adjusted: bool = False
 
 
 def generate(
@@ -84,6 +90,9 @@ def generate(
             "attempt": 1,
             "degraded": False,
             "violations": [],
+            "unresolved": [],
+            "adjustable": False,
+            "adjusted": False,
         }
         final_state = compiled.invoke(initial_state, config={"recursion_limit": _RECURSION_LIMIT})
     except Exception:
@@ -92,4 +101,6 @@ def generate(
         return GenerationResult(None, "api_error")
     if final_state["error"]:
         return GenerationResult(None, final_state["error"])
-    return GenerationResult(final_state["plan"], None, degraded=final_state["degraded"])
+    return GenerationResult(
+        final_state["plan"], None, degraded=final_state["degraded"], adjusted=final_state["adjusted"]
+    )

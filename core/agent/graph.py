@@ -5,8 +5,10 @@ resolve_recompute re-derives totals from get_nutrition_tool so no LLM number rea
 the user (G3), also collecting any fdc_id USDA doesn't recognize into `unresolved`
 (G-exists); validate_guardrails enforces G1 (target conformity), G2 (disliked foods)
 and G-exists (no invented fdc_ids), looping back to `agent` with the violation reason,
-capped at MAX_ATTEMPTS -- exhausting it goes to `degrade` instead of showing a silently
-non-conforming plan (G7).
+capped at MAX_ATTEMPTS -- exhausting it goes to `adjust_portions` (G7 business-rule
+fallback: rescale grams to hit target_kcal) when G1 is the only remaining violation and
+the gap is within ADJUST_MAX_FRACTION, or to `degrade` otherwise, instead of showing a
+silently non-conforming plan.
 """
 import json
 import time
@@ -38,6 +40,17 @@ MAX_ATTEMPTS = 2
 # imprecise. A target_kcal of 0 skips the check -- used by tests that don't care
 # about calorie conformity.
 TARGET_TOLERANCE_FRACTION = 0.10
+# G7 business-rule fallback: when MAX_ATTEMPTS is exhausted and the only remaining
+# violation is G1, scale every food's grams by target/total instead of degrading --
+# but only up to this fraction off target. Beyond it, the correction would produce
+# unrealistic portions, so it still degrades. Deliberately looser than
+# TARGET_TOLERANCE_FRACTION: that's "is this plan good enough", this is "is this plan
+# close enough that rescaling it still looks human-picked".
+ADJUST_MAX_FRACTION = 0.15
+# Adjusted portions are rounded to the nearest multiple of this many grams, so a
+# rescaled plan still reads like a chosen serving size instead of a raw
+# multiplication artifact. Never rounded below this floor.
+ADJUST_ROUND_GRAMS = 5
 
 
 @tool
@@ -60,6 +73,8 @@ class AgentState(TypedDict):
     degraded: bool
     violations: list[str]
     unresolved: list[str]
+    adjustable: bool
+    adjusted: bool
 
 
 def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
@@ -152,7 +167,12 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
         """G1 (target conformity) + G2 (disliked foods) + G-exists (fdc_ids that
         actually resolve against USDA), all deterministic. Never mutates the plan --
         only decides, via route_after_validate, whether to loop back to `agent`,
-        finalize, or degrade.
+        finalize, degrade, or (G7 fallback) adjust_portions.
+
+        `adjustable` is derived from the same booleans that build `violations`, not by
+        re-parsing those messages -- it's True only when G1 is the *sole* violation and
+        the gap is within ADJUST_MAX_FRACTION, so route_after_validate can decide
+        adjust vs. degrade without guessing from text.
         """
         plan = state["plan"]
         assert plan is not None
@@ -161,7 +181,8 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
         total = state["resolved_total_kcal"]
         target = state["target_kcal"]
         assert total is not None
-        if target and abs(total - target) > TARGET_TOLERANCE_FRACTION * target:
+        kcal_violation = bool(target) and abs(total - target) > TARGET_TOLERANCE_FRACTION * target
+        if kcal_violation:
             violations.append(
                 f"Total is {round(total)} kcal, target is {round(target)} kcal "
                 f"(must be within {int(TARGET_TOLERANCE_FRACTION * 100)}%)."
@@ -180,7 +201,29 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
                 f"instead of inventing an fdc_id, or drop them: {names}."
             )
 
-        return {"violations": violations}
+        within_adjust_cap = bool(target) and abs(total - target) <= ADJUST_MAX_FRACTION * target
+        adjustable = kcal_violation and not disliked and not unresolved and within_adjust_cap
+
+        return {"violations": violations, "adjustable": adjustable}
+
+    def adjust_portions_node(state: AgentState) -> dict:
+        """G7 business-rule fallback: scale every food's grams by target/total so the
+        total lands on target_kcal, instead of showing a degraded plan. Uniform scaling
+        preserves each food's macro ratios (kcal is linear in grams) -- this only
+        resizes portions, it never changes what's on the plate. Grams are rounded to
+        ADJUST_ROUND_GRAMS so the result still reads like a chosen serving size.
+
+        Only reached once per generate() call (route_after_validate checks `adjusted`
+        before routing here again), so a residual violation after rounding falls
+        through to degrade on the next validate_guardrails pass rather than looping.
+        """
+        plan = state["plan"]
+        total = state["resolved_total_kcal"]
+        assert plan is not None
+        assert total is not None
+        factor = state["target_kcal"] / total
+        adjusted_foods = [food.model_copy(update={"grams": _round_grams(food.grams * factor)}) for food in plan.foods]
+        return {"plan": plan.model_copy(update={"foods": adjusted_foods}), "adjusted": True}
 
     def degrade_node(state: AgentState) -> dict:
         return {"degraded": True}
@@ -216,6 +259,8 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
         if not state["violations"]:
             return "finalize"
         if state["attempt"] >= MAX_ATTEMPTS:
+            if not state["adjusted"] and state["adjustable"]:
+                return "adjust_portions"
             return "degrade"
         return "retry"
 
@@ -227,6 +272,7 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
     graph.add_node("resolve_recompute", resolve_recompute_node)
     graph.add_node("validate_guardrails", validate_guardrails_node)
     graph.add_node("retry", apply_retry_node)
+    graph.add_node("adjust_portions", adjust_portions_node)
     graph.add_node("degrade", degrade_node)
 
     graph.add_edge(START, "load_context")
@@ -236,11 +282,22 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
     graph.add_conditional_edges("collect_proposal", route_after_collect)
     graph.add_edge("resolve_recompute", "validate_guardrails")
     graph.add_conditional_edges(
-        "validate_guardrails", route_after_validate, {"finalize": END, "degrade": "degrade", "retry": "retry"}
+        "validate_guardrails",
+        route_after_validate,
+        {"finalize": END, "degrade": "degrade", "retry": "retry", "adjust_portions": "adjust_portions"},
     )
     graph.add_edge("retry", "agent")
+    graph.add_edge("adjust_portions", "resolve_recompute")
     graph.add_edge("degrade", END)
     return graph.compile()
+
+
+def _round_grams(grams: float) -> float:
+    """Round an adjust_portions-scaled gram amount to the nearest ADJUST_ROUND_GRAMS,
+    never below that floor -- keeps a rescaled portion looking human-picked instead of
+    a raw multiplication artifact (or, at the low end, vanishing to 0g).
+    """
+    return max(float(ADJUST_ROUND_GRAMS), round(grams / ADJUST_ROUND_GRAMS) * ADJUST_ROUND_GRAMS)
 
 
 def _invoke_with_retry(bound_llm, messages, provider):
