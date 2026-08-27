@@ -74,7 +74,10 @@ def render_preferences_section() -> None:
     )
 
     if selected != active_items:
-        if active_tab == "likes":
-            preferences_store.save_preferences({"likes": selected, "dislikes": dislikes})
-        else:
-            preferences_store.save_preferences({"likes": likes, "dislikes": selected})
+        try:
+            if active_tab == "likes":
+                preferences_store.save_preferences({"likes": selected, "dislikes": dislikes})
+            else:
+                preferences_store.save_preferences({"likes": likes, "dislikes": selected})
+        except ValueError as error:
+            st.error(str(error))
