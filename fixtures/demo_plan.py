@@ -3,7 +3,6 @@
 DEMO_PLAN = {
     "day": "wednesday",
     "generated_at": "09:41",
-    "model_label": "Gemini 2.5 Flash",
     "target_kcal": 1806,
     "total_kcal": 1792,
     "total_protein_g": 132,
@@ -42,8 +41,8 @@ DEMO_PLAN = {
         },
     ],
     "guardrails": [
-        {"status": "ok", "message": "Deficit cap respected"},
-        {"status": "ok", "message": "No excluded food detected"},
-        {"status": "warn", "message": "Quinoa estimated — FDC unavailable"},
+        {"status": "ok", "message": "Calorie target within safe limits"},
+        {"status": "ok", "message": "No disliked foods in this plan"},
+        {"status": "warn", "message": "Quinoa uses estimated nutrition — USDA data was unavailable for this item."},
     ],
 }

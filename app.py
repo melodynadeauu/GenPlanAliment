@@ -1,25 +1,33 @@
-"""Streamlit entry point. Wires components together — no business logic here."""
+"""Streamlit entry point. Wires components together — no business logic here.
+
+Page order mirrors the product's own logic, top to bottom:
+    fixed masthead → training week → calorie target → the plan.
+"""
 
 import streamlit as st
 
 from core.agent import plan_view
 from ui import adapters
+from ui.energy import load_day_activities
 from ui.layout import configure_page
 from ui.state import (
     init_state,
     KEY_SELECTED_DAY,
     KEY_GENERATED_PLAN,
+    KEY_PLAN_DAY,
     KEY_PROFILE_AGE,
     KEY_PROFILE_WEIGHT,
     KEY_PROFILE_HEIGHT,
     KEY_PROFILE_GOAL,
 )
-from ui.components.top_bar import render_top_bar
+from ui.components.top_bar import render_masthead
+from ui.components.week_strip import render_week_strip
+from ui.components.energy_chain import render_energy_chain
 from ui.components.sidebar_profile import render_profile_section
 from ui.components.sidebar_preferences import render_preferences_section
-from ui.components.totals_row import render_totals_row
+from ui.components.totals_row import render_plan_summary
 from ui.components.meal_plan import render_meal_plan
-from ui.components.guardrails_bar import render_guardrails_bar
+from ui.components.guardrails_bar import render_footer
 
 from fixtures.demo_plan import DEMO_PLAN
 from fixtures.demo_week import DEMO_WEEK
@@ -27,62 +35,77 @@ from fixtures.demo_week import DEMO_WEEK
 # Error codes GenerationResult.error can carry (see core/agent/llm_adapter.py), each
 # with a message a UI user can act on. Mirrors main.py's ERROR_MESSAGES.
 ERROR_MESSAGES = {
-    "rate_limited": "The LLM provider rate-limited the request. Wait a bit and try again.",
-    "timeout": "The LLM provider timed out (or errored transiently) and retries were exhausted.",
-    "api_error": "Could not reach the LLM provider (connection or setup error). Check "
+    "rate_limited": "Too many requests right now. Wait a bit and try again, or press "
+    "Demo plan to show a ready-made one.",
+    "timeout": "The request timed out and the retries were used up. Try again.",
+    "api_error": "Could not reach the plan service (connection or setup error). Check "
     "LLM_PROVIDER and the matching API key in .env.",
-    "invalid_output": "The LLM never produced a valid plan (bad tool call or output "
-    "that failed PlanPropose validation), even after the forced final attempt.",
+    "invalid_output": "No valid plan came back, even after the final attempt. Try again, "
+    "or press Demo plan.",
 }
 
 
-def main() -> None:
-    """App entry point: page setup, top bar, sidebar, then the generated plan."""
-    configure_page()
-    init_state()
-
-    # Top bar: day selector + generate button + demo button
-    selected_day, generate_clicked, demo_clicked = render_top_bar(
-        week=DEMO_WEEK,
-        selected_day=st.session_state[KEY_SELECTED_DAY],
-    )
-    st.session_state[KEY_SELECTED_DAY] = selected_day
-
-    # Demo mode handler (D1): loads the pre-generated fixture, no LLM/network call --
-    # the fallback when the LLM quota is exhausted mid-demo.
-    if demo_clicked:
-        st.session_state[KEY_GENERATED_PLAN] = DEMO_PLAN
-
-    # Generate button handler
-    if generate_clicked:
-        profile_dict = {
+def _current_profile():
+    """Build a core Profile from the sidebar's current values."""
+    return adapters.profile_from_dict(
+        {
             "age": st.session_state[KEY_PROFILE_AGE],
             "weight_kg": st.session_state[KEY_PROFILE_WEIGHT],
             "height_cm": st.session_state[KEY_PROFILE_HEIGHT],
             "goal": st.session_state[KEY_PROFILE_GOAL],
         }
-        profile = adapters.profile_from_dict(profile_dict)
-        day = adapters.weekday_from_ui_day(selected_day)
+    )
 
-        with st.spinner("Generating plan…"):
+
+def main() -> None:
+    """App entry point: sidebar inputs, then the day's target and its plan."""
+    configure_page()
+    init_state()
+
+    with st.sidebar:
+        render_profile_section()
+        st.divider()
+        render_preferences_section()
+
+    profile = _current_profile()
+
+    generate_clicked, demo_clicked = render_masthead()
+    selected_day = render_week_strip(DEMO_WEEK, profile)
+    st.session_state[KEY_SELECTED_DAY] = selected_day
+
+    day_entry = next((d for d in DEMO_WEEK if d["day"] == selected_day), DEMO_WEEK[0])
+    activity_rows = load_day_activities(selected_day, DEMO_WEEK)
+    target_kcal = render_energy_chain(profile, day_entry["label"], activity_rows)
+
+    # D1 (quota fallback): loads the pre-generated fixture, no LLM/network call.
+    if demo_clicked:
+        st.session_state[KEY_GENERATED_PLAN] = DEMO_PLAN
+        st.session_state[KEY_PLAN_DAY] = DEMO_PLAN.get("day", selected_day)
+
+    if generate_clicked:
+        day = adapters.weekday_from_ui_day(selected_day)
+        with st.spinner(f"Building {day_entry['label'].title()}'s meals — "
+                        f"searching USDA foods and checking guardrails…"):
             view, error = plan_view.generate_daily_plan_view(profile, day)
 
         if error:
             st.error(ERROR_MESSAGES.get(error, error))
         else:
             st.session_state[KEY_GENERATED_PLAN] = view
+            st.session_state[KEY_PLAN_DAY] = selected_day
 
-    # Sidebar
-    with st.sidebar:
-        render_profile_section()
-        st.divider()
-        render_preferences_section()
+    st.markdown('<div class="am-rule"></div>', unsafe_allow_html=True)
 
-    # Main content
     plan = st.session_state[KEY_GENERATED_PLAN]
-    render_totals_row(plan)
+    plan_day = st.session_state[KEY_PLAN_DAY]
+    render_plan_summary(
+        plan,
+        target_kcal,
+        plan_day_label=plan_day.capitalize() if plan_day else None,
+        selected_day_label=selected_day.capitalize(),
+    )
     render_meal_plan(plan)
-    render_guardrails_bar(plan)
+    render_footer()
 
 
 if __name__ == "__main__":
