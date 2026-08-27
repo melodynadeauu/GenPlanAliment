@@ -198,6 +198,39 @@ def test_generate_daily_plan_view_passes_degraded_through(monkeypatch):
     assert len(view["guardrails"]) == 1
 
 
+def test_build_plan_view_names_the_unresolved_food_in_the_degraded_banner(monkeypatch):
+    """G-exists: when degrade was caused by a ghost fdc_id, the banner should name it
+    instead of showing the generic 'check the total and excluded foods' message."""
+
+    def lookup(fdc_id):
+        return {"error": "not_found"} if fdc_id == "999" else APPLE_NUTRITION
+
+    monkeypatch.setattr(plan_view, "get_nutrition_tool", _FakeNutritionTool(lookup))
+    plan = PlanPropose(
+        foods=[
+            PlanFood(description="Apple, raw", fdc_id="1", meal=MealType.SNACK, grams=100.0),
+            PlanFood(description="Mystery food", fdc_id="999", meal=MealType.DINNER, grams=100.0),
+        ]
+    )
+
+    view = plan_view.build_plan_view(plan, target_kcal=2000.0, degraded=True)
+
+    assert len(view["guardrails"]) == 1
+    assert "Mystery food" in view["guardrails"][0]["message"]
+    assert view["guardrails"][0]["status"] == "warn"
+
+
+def test_build_plan_view_keeps_the_generic_banner_when_degraded_without_unresolved_foods(monkeypatch):
+    monkeypatch.setattr(plan_view, "get_nutrition_tool", _FakeNutritionTool(lambda fdc_id: APPLE_NUTRITION))
+    plan = PlanPropose(foods=[PlanFood(description="Apple, raw", fdc_id="1", meal=MealType.SNACK, grams=100.0)])
+
+    view = plan_view.build_plan_view(plan, target_kcal=2000.0, degraded=True)
+
+    assert view["guardrails"] == [
+        {"status": "warn", "message": "Plan non-compliant after 2 attempts — check the total and excluded foods."}
+    ]
+
+
 def test_generate_daily_plan_view_returns_no_view_and_the_error_on_failure(monkeypatch):
     monkeypatch.setattr(
         plan_generator,

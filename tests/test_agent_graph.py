@@ -90,6 +90,19 @@ class _FakeNutritionTool:
         return {"macros_per_100g": {"kcal": 100.0, "protein_g": 1.0, "fat_g": 0.0, "carbs_g": 0.0}}
 
 
+class _FakeNutritionToolByFdcId:
+    """Like _FakeNutritionTool, but only resolves fdc_ids in `known` -- anything else
+    errors, simulating an LLM-invented fdc_id that doesn't exist in USDA (G-exists)."""
+
+    def __init__(self, known):
+        self._known = set(known)
+
+    def invoke(self, args):
+        if args["fdc_id"] in self._known:
+            return {"macros_per_100g": {"kcal": 100.0, "protein_g": 1.0, "fat_g": 0.0, "carbs_g": 0.0}}
+        return {"error": "not_found"}
+
+
 @pytest.fixture(autouse=True)
 def fake_nutrition_lookup(monkeypatch):
     """resolve_recompute_node calls the real get_nutrition_tool -- fake it here so no
@@ -353,4 +366,46 @@ def test_exhausted_retries_degrades_instead_of_looping_forever():
     assert result["error"] is None
     assert result["degraded"] is True
     assert result["plan"] is not None  # degraded still returns the last plan, with a warning
+    assert result["attempt"] == agent_graph.MAX_ATTEMPTS
+
+
+# --- G-exists: a food whose fdc_id doesn't resolve against USDA is a violation, not a
+# silently-dropped line item -- same retry/degrade path as G1/G2, driven by
+# resolve_recompute_node's `unresolved` list. ---
+
+
+def test_unresolvable_fdc_id_triggers_one_retry_then_succeeds(monkeypatch):
+    """First proposal invents an fdc_id USDA doesn't have; second (after the injected
+    violation reason) uses one that resolves. Must finalize on attempt 2, not degrade."""
+    ghost = {"description": "Mystery Food", "fdc_id": "999", "meal": "snack", "grams": 100.0}
+    real = {"description": "Apple", "fdc_id": "1", "meal": "snack", "grams": 100.0}
+    monkeypatch.setattr(agent_graph, "get_nutrition_tool", _FakeNutritionToolByFdcId(known=["1"]))
+    model = FakeChatModel([ai_message([submit_call("1", [ghost])]), ai_message([submit_call("2", [real])])])
+    compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
+
+    result = compiled.invoke(_initial_state(), config={"recursion_limit": 50})
+
+    assert result["error"] is None
+    assert result["degraded"] is False
+    assert result["attempt"] == 2
+    assert result["plan"].foods[0].description == "Apple"
+    # the retry message must name the specific ghost fdc_id, not a generic complaint
+    retry_messages = [m.content for m in result["messages"] if type(m).__name__ == "HumanMessage"]
+    assert any("999" in content for content in retry_messages)
+
+
+def test_unresolvable_fdc_id_exhausts_retries_and_degrades(monkeypatch):
+    """Every attempt keeps inventing an fdc_id USDA doesn't have -- after MAX_ATTEMPTS,
+    degrade rather than loop forever or silently drop the food from the total."""
+    ghost = {"description": "Mystery Food", "fdc_id": "999", "meal": "snack", "grams": 100.0}
+    monkeypatch.setattr(agent_graph, "get_nutrition_tool", _FakeNutritionToolByFdcId(known=[]))
+    model = FakeChatModel(
+        [ai_message([submit_call(str(i), [ghost])]) for i in range(agent_graph.MAX_ATTEMPTS)]
+    )
+    compiled = agent_graph.build_graph(model, [fake_tool], FakeProvider())
+
+    result = compiled.invoke(_initial_state(), config={"recursion_limit": 50})
+
+    assert result["error"] is None
+    assert result["degraded"] is True
     assert result["attempt"] == agent_graph.MAX_ATTEMPTS

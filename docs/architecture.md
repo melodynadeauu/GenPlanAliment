@@ -17,7 +17,7 @@ flowchart TD
         N2 <-->|tool calls| TOOL["USDA tool + cache"]
         N2 --> N3["collect_proposal"]
         N3 --> N4["resolve_recompute (G3)"]
-        N4 --> N5["validate_guardrails (G1/G2)"]
+        N4 --> N5["validate_guardrails (G1/G2/G-exists)"]
         N5 -->|non-compliant, attempt < 2| N2
         N5 -->|compliant| N6["finalize"]
         N5 -->|attempts exhausted| N6b["degrade (G7)"]

@@ -46,12 +46,15 @@ def build_plan_view(plan: PlanPropose, target_kcal: float, degraded: bool = Fals
     items_by_meal: dict[MealType, list[dict]] = {meal: [] for meal in MEAL_ORDER}
     total_kcal = 0.0
     total_protein_g = 0.0
+    unresolved_names: list[str] = []
 
     for food in plan.foods:
         item, kcal, protein_g = _build_item(food)
         items_by_meal[food.meal].append(item)
         total_kcal += kcal
         total_protein_g += protein_g
+        if item["source_status"] == "warn":
+            unresolved_names.append(food.description)
 
     meals = [
         {
@@ -63,11 +66,18 @@ def build_plan_view(plan: PlanPropose, target_kcal: float, degraded: bool = Fals
         if (items := items_by_meal[meal])
     ]
 
-    guardrails = (
-        [{"status": "warn", "message": "Plan non-compliant after 2 attempts — check the total and excluded foods."}]
-        if degraded
-        else []
-    )
+    guardrails = []
+    if degraded:
+        if unresolved_names:
+            # G-exists caused (or contributed to) the degrade: name the ghost food(s)
+            # instead of the generic message, so the warning is actionable.
+            message = (
+                f"Plan non-compliant after 2 attempts — {', '.join(unresolved_names)} "
+                "could not be found in USDA and are shown as estimated."
+            )
+        else:
+            message = "Plan non-compliant after 2 attempts — check the total and excluded foods."
+        guardrails = [{"status": "warn", "message": message}]
 
     return {
         "target_kcal": target_kcal,

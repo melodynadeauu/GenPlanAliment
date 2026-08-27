@@ -41,6 +41,7 @@ See the Dossier de défense (D1–D10) for the full reasoning. Summary:
 | G5 | Plausible bounds on age/weight/height | `ui/components/sidebar_profile.py` |
 | G6 | Preferences sanitized before entering the prompt | `core/agent/guardrails.py::sanitize_preference_items` |
 | G7 | Max 2 attempts, then degraded mode with a visible warning | `core/agent/graph.py` |
+| G-exists | Invented/unresolvable fdc_ids rejected, not silently dropped from the total | `core/agent/graph.py::validate_guardrails_node` |
 
 Demo mode: the "Demo plan" button in the top bar reloads a plan that was already
 generated (`fixtures/demo_plan.py`), no LLM call or network — the quota fallback.

@@ -2,9 +2,11 @@
 load_context is a pass-through documenting the input boundary; agent/tools/
 collect_proposal is the tool-calling loop that gets an LLM to call submit_plan;
 resolve_recompute re-derives totals from get_nutrition_tool so no LLM number reaches
-the user (G3); validate_guardrails enforces G1 (target conformity) and G2 (disliked
-foods), looping back to `agent` with the violation reason, capped at MAX_ATTEMPTS --
-exhausting it goes to `degrade` instead of showing a silently non-conforming plan (G7).
+the user (G3), also collecting any fdc_id USDA doesn't recognize into `unresolved`
+(G-exists); validate_guardrails enforces G1 (target conformity), G2 (disliked foods)
+and G-exists (no invented fdc_ids), looping back to `agent` with the violation reason,
+capped at MAX_ATTEMPTS -- exhausting it goes to `degrade` instead of showing a silently
+non-conforming plan (G7).
 """
 import json
 import time
@@ -57,6 +59,7 @@ class AgentState(TypedDict):
     attempt: int
     degraded: bool
     violations: list[str]
+    unresolved: list[str]
 
 
 def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
@@ -126,22 +129,30 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
         """G3: never trust the LLM's own arithmetic. Re-derive the total kcal from
         get_nutrition_tool (already cache-warm from generation, see data.usda.cache) so
         validate_guardrails checks a number Python computed, not one the model claimed.
+
+        A food whose fdc_id USDA doesn't recognize (the model invented or misremembered
+        it) is excluded from the total rather than crashing, but its description/fdc_id
+        is also collected into `unresolved` so validate_guardrails can flag it as a
+        violation (G-exists) instead of letting it silently vanish from the plan.
         """
         plan = state["plan"]
         assert plan is not None
         total_kcal = 0.0
+        unresolved: list[str] = []
         for food in plan.foods:
             nutrition = get_nutrition_tool.invoke({"fdc_id": food.fdc_id})
             if "error" in nutrition:
-                continue  # unresolvable food: excluded from the total, not a crash
+                unresolved.append(f"{food.description} (fdc_id {food.fdc_id})")
+                continue  # unresolvable food: excluded from the total, flagged below
             macros = nutrition["macros_per_100g"]
             total_kcal += macros["kcal"] * (food.grams / 100)
-        return {"resolved_total_kcal": total_kcal}
+        return {"resolved_total_kcal": total_kcal, "unresolved": unresolved}
 
     def validate_guardrails_node(state: AgentState) -> dict:
-        """G1 (target conformity) + G2 (disliked foods), both deterministic. Never
-        mutates the plan -- only decides, via route_after_validate, whether to loop
-        back to `agent`, finalize, or degrade.
+        """G1 (target conformity) + G2 (disliked foods) + G-exists (fdc_ids that
+        actually resolve against USDA), all deterministic. Never mutates the plan --
+        only decides, via route_after_validate, whether to loop back to `agent`,
+        finalize, or degrade.
         """
         plan = state["plan"]
         assert plan is not None
@@ -160,6 +171,14 @@ def build_graph(llm: BaseChatModel, data_tools: list[BaseTool], provider):
         if disliked:
             names = ", ".join(f.description for f in disliked)
             violations.append(f"These foods are on the dislikes list and must be removed: {names}.")
+
+        unresolved = state.get("unresolved") or []
+        if unresolved:
+            names = "; ".join(unresolved)
+            violations.append(
+                f"These foods don't exist in USDA -- look them up via search_food_tool "
+                f"instead of inventing an fdc_id, or drop them: {names}."
+            )
 
         return {"violations": violations}
 
