@@ -2,8 +2,6 @@
 
 import streamlit as st
 
-from ui.icons import meal_icon
-
 
 def _meal_card_html(meal: dict) -> str:
     """One meal card: header with its kcal, then a row per food."""
@@ -31,7 +29,7 @@ def _meal_card_html(meal: dict) -> str:
     return (
         '<div class="am-meal">'
         '<div class="am-meal-head">'
-        f'{meal_icon(name)}<span class="am-meal-name">{name}</span>'
+        f'<span class="am-meal-name">{name}</span>'
         f'<span class="am-meal-kcal">{meal.get("kcal", 0)} kcal</span>'
         "</div>" + "".join(rows) + "</div>"
     )

@@ -129,8 +129,7 @@ def configure_page() -> None:
     default-sans fallback.
     """
     st.set_page_config(
-        page_title="AgentMealPrep — activity-aware meal planning",
-        page_icon="🥗",
+        page_title="AgentMealPrep: activity-aware meal planning",
         layout="wide",
         initial_sidebar_state="expanded",
     )

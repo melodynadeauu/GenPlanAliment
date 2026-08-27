@@ -2,13 +2,11 @@
 
 import streamlit as st
 
-from ui.icons import icon
-
 # Guardrail messages come from the agent in engineering terms; a demo audience
 # needs the consequence, not the retry count.
 _HUMAN_MESSAGES = {
     "Plan non-compliant after 2 attempts": (
-        "Could not land inside the calorie window after 2 tries — this is the "
+        "Could not land inside the calorie window after 2 tries. This is the "
         "closest attempt. Check the total before using it."
     ),
 }
@@ -78,7 +76,7 @@ def render_plan_summary(
     # like the plan followed along.
     if plan_day_label and selected_day_label and plan_day_label != selected_day_label:
         st.markdown(
-            f'<div class="am-note">{icon("block", 15)}<span>This plan was built for '
+            f'<div class="am-note"><span>This plan was built for '
             f"<b>{plan_day_label}</b>. Press <b>Generate plan</b> to rebuild it for "
             f"{selected_day_label}.</span></div>",
             unsafe_allow_html=True,
@@ -87,7 +85,7 @@ def render_plan_summary(
     for guardrail in plan.get("guardrails", []):
         if guardrail.get("status") == "warn":
             st.markdown(
-                f'<div class="am-note">{icon("block", 15)}'
+                f'<div class="am-note">'
                 f'<span>{humanize(guardrail.get("message", ""))}</span></div>',
                 unsafe_allow_html=True,
             )

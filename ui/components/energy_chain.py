@@ -11,7 +11,6 @@ import streamlit as st
 from core.models import Profile
 from fixtures.demo_week import display_for
 from ui.energy import GOAL_LABEL, compute_energy
-from ui.icons import activity_icon, icon
 
 
 def _step(label: str, value: str, sub: str = "", css_class: str = "") -> str:
@@ -41,12 +40,12 @@ def render_energy_chain(profile: Profile, day_label: str, rows: list[dict]) -> f
         # that went into the burn gets named -- the day card only has room for
         # how many there are.
         burn_sub = "".join(
-            f'<span class="am-step-part">{activity_icon(row["activity"], 14)}'
-            f'{display_for(row["activity"])[0]} · {row["duration_minutes"]} min</span>'
+            f'<span class="am-step-part">'
+            f'{display_for(row["activity"])} · {row["duration_minutes"]} min</span>'
             for row in rows
         )
     else:
-        burn_sub = f'{icon("moon", 14)}Rest day'
+        burn_sub = "Rest day"
 
     goal_label = GOAL_LABEL.get(profile.goal.value, profile.goal.value)
     adjustment = energy["adjustment"]

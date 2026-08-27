@@ -134,7 +134,7 @@ def build_global_css() -> str:
         max-width: var(--am-sidebar-w) !important;
         flex: 0 0 var(--am-sidebar-w) !important;
     }}
-    /* Streamlit's drag handle fights viewport-based width — disable it. */
+    /* Streamlit's drag handle fights viewport-based width, so disable it. */
     section[data-testid="stSidebar"] [style*="cursor: col-resize"],
     section[data-testid="stSidebar"] [style*="cursor:col-resize"] {{
         display: none !important;
@@ -212,7 +212,6 @@ def build_global_css() -> str:
         outline: 2px solid var(--accent) !important;
         outline-offset: 2px !important; border-radius: var(--r-sm);
     }}
-    .am-i {{ flex: 0 0 auto; vertical-align: -.18em; }}
     /* Reaches screen readers, never the page. */
     .am-sr {{
         position: absolute; width: 1px; height: 1px; margin: -1px;
@@ -339,7 +338,7 @@ def build_global_css() -> str:
     }}
     /* An empty 32px reservation for a logo this app does not set. */
     [data-testid="stLogoSpacer"] {{ display: none !important; }}
-    /* No top/bottom pad — Streamlit's default 96px bottom reservation looks unfinished;
+    /* No top/bottom pad: Streamlit's default 96px bottom reservation looks unfinished;
        sides stay tight so fields use the sidebar width. */
     [data-testid="stSidebarUserContent"] {{
         padding: 0 var(--s-2) !important;
@@ -437,18 +436,19 @@ def build_global_css() -> str:
     }}
     div.st-key-week_expand_toggle {{
         position: relative;
-        width: 26px;
+        width: fit-content;
         height: 26px;
         margin-left: auto;
     }}
-    .am-week-toggle-icon {{
+    .am-week-toggle-label {{
         display: flex; align-items: center; justify-content: center;
-        width: 26px; height: 26px; padding: 0;
+        height: 26px; padding: 0 var(--s-2);
         background: var(--surface); border: 1px solid var(--line);
         border-radius: var(--r-sm); color: var(--ink-2);
+        font-size: var(--t-xs); font-weight: 600; white-space: nowrap;
         transition: border-color .16s ease, background .16s ease, color .16s ease;
     }}
-    div.st-key-week_expand_toggle:hover .am-week-toggle-icon {{
+    div.st-key-week_expand_toggle:hover .am-week-toggle-label {{
         border-color: var(--accent); background: {c['accent_soft']}; color: {c['accent_deep']};
     }}
     div.st-key-week_expand_toggle > [data-testid="stElementContainer"]:has(.stButton) {{
@@ -456,12 +456,12 @@ def build_global_css() -> str:
     }}
     div.st-key-week_expand_toggle .stButton {{ height: 100%; margin: 0; padding: 0; }}
     div.st-key-week_expand_toggle .stButton > button {{
-        width: 26px; height: 26px; min-height: 26px;
+        width: 100%; height: 26px; min-height: 26px;
         opacity: 0; padding: 0 !important; margin: 0 !important;
         border: none !important; box-shadow: none !important;
         cursor: pointer;
     }}
-    div.st-key-week_expand_toggle:has(button:focus-visible) .am-week-toggle-icon {{
+    div.st-key-week_expand_toggle:has(button:focus-visible) .am-week-toggle-label {{
         outline: 2px solid var(--accent); outline-offset: 2px;
     }}
     .am-rule {{ height: 1px; background: var(--line); margin: var(--s-4) 0; }}
@@ -556,7 +556,6 @@ def build_global_css() -> str:
         line-height: 1.3; margin-top: var(--s-1);
         min-height: 2.4em; overflow: hidden;
     }}
-    .am-day-act .am-i {{ margin-top: 2px; }}
     .am-day-meta {{
         font-size: var(--t-xs); line-height: 1.45; color: var(--ink-2);
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

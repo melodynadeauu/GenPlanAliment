@@ -29,7 +29,7 @@ DEMO_PLAN = {
             "kcal": 542,
             "items": [
                 {"food": "Salmon, baked", "grams": 150, "kcal": 312, "source": "FDC 175167", "source_status": "ok"},
-                {"food": "Quinoa, cooked", "grams": 140, "kcal": 172, "source": "estimated — FDC unavailable", "source_status": "warn"},
+                {"food": "Quinoa, cooked", "grams": 140, "kcal": 172, "source": "estimated (FDC unavailable)", "source_status": "warn"},
             ],
         },
         {
@@ -43,6 +43,6 @@ DEMO_PLAN = {
     "guardrails": [
         {"status": "ok", "message": "Calorie target within safe limits"},
         {"status": "ok", "message": "No disliked foods in this plan"},
-        {"status": "warn", "message": "Quinoa uses estimated nutrition — USDA data was unavailable for this item."},
+        {"status": "warn", "message": "Quinoa uses estimated nutrition. USDA data was unavailable for this item."},
     ],
 }

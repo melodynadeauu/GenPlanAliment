@@ -36,7 +36,7 @@ DEFAULTS = {
 def init_state() -> None:
     """Populate any missing session_state keys with their defaults.
 
-    Idempotent — safe to call multiple times.
+    Idempotent: safe to call multiple times.
     Called once at the top of app.py.
     """
     for key, default in DEFAULTS.items():

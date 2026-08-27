@@ -1,4 +1,4 @@
-"""Streamlit entry point. Wires components together — no business logic here.
+"""Streamlit entry point. Wires components together. No business logic here.
 
 Page order mirrors the product's own logic, top to bottom:
     fixed masthead → training week → calorie target → the plan.
@@ -106,7 +106,7 @@ def main() -> None:
             (d for d in DEMO_WEEK if d["day"] == generating_day), day_entry
         )
         day = adapters.weekday_from_ui_day(generating_day)
-        with st.spinner(f"Building {generating_entry['label'].title()}'s meals — "
+        with st.spinner(f"Building {generating_entry['label'].title()}'s meals: "
                         f"searching USDA foods and checking guardrails…"):
             view, error = plan_view.generate_daily_plan_view(profile, day)
 

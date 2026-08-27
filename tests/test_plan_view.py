@@ -117,7 +117,7 @@ def test_build_plan_view_falls_back_to_estimation_when_nutrition_lookup_fails(mo
     item = view["meals"][0]["items"][0]
     assert item["kcal"] == 0
     assert item["source_status"] == "warn"
-    assert item["source"] == "estimated — FDC unavailable"
+    assert item["source"] == "estimated (FDC unavailable)"
     assert view["total_kcal"] == 0
 
 
@@ -227,7 +227,7 @@ def test_build_plan_view_keeps_the_generic_banner_when_degraded_without_unresolv
     view = plan_view.build_plan_view(plan, target_kcal=2000.0, degraded=True)
 
     assert view["guardrails"] == [
-        {"status": "warn", "message": "Plan non-compliant after 2 attempts — check the total and excluded foods."}
+        {"status": "warn", "message": "Plan non-compliant after 2 attempts. Check the total and excluded foods."}
     ]
 
 
