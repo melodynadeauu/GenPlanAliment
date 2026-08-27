@@ -130,11 +130,27 @@ def search_food(query: str, api_key: str) -> FoodLookupResult:
     return FoodLookupResult(results, None) if results else FoodLookupResult(None, "not_found")
 
 
+def _is_stale(macros: dict) -> bool:
+    """A cached macros_per_100g is stale if it predates a MACRO_FIELDS addition (missing
+    a key), or if it was cached with kcal == 0.0 while another macro is non-zero -- the
+    old extract_macros only read nutrient "208" and silently zeroed kcal for foods that
+    report energy under a different field (see data.usda.nutrients). Either case is
+    worth one live refetch to self-heal."""
+    if not (set(MACRO_FIELDS.values()) <= macros.keys()):
+        return True
+    other_macros_present = any(
+        macros[field] for field in ("protein_g", "fat_g", "carbs_g") if field in macros
+    )
+    return macros.get("kcal", 0.0) == 0.0 and other_macros_present
+
+
 def get_nutrition(fdc_id: str, api_key: str) -> FoodLookupResult:
     """fdc_id, description and macros_per_100g for `fdc_id`, via the cache first.
 
-    A row cached before MACRO_FIELDS grew a new macro is missing it and is treated
-    as stale -- one live call backfills it, so the cache self-heals instead of
+    A row cached before MACRO_FIELDS grew a new macro is missing it, and a row cached
+    with kcal == 0.0 despite other non-zero macros is likely a food whose energy USDA
+    reports under a field the parser didn't know about yet -- both are treated as
+    stale. One live call backfills/refreshes it, so the cache self-heals instead of
     needing a manual wipe.
     """
     cached = get_cached_nutrition(fdc_id)
@@ -142,9 +158,9 @@ def get_nutrition(fdc_id: str, api_key: str) -> FoodLookupResult:
     if cached is not None:
         if not cached["found"]:
             return FoodLookupResult(None, "not_found")
-        if set(MACRO_FIELDS.values()) <= cached["food"]["macros_per_100g"].keys():
+        if not _is_stale(cached["food"]["macros_per_100g"]):
             return FoodLookupResult(cached["food"], None)
-        # else: cached before a macro field existed -- fall through and refresh it live
+        # else: stale (missing field, or zero-kcal with other macros present) -- refresh live
 
     data, error = _fetch_json(f"{FOOD_URL}/{fdc_id}", {"api_key": api_key})
     if error is not None:

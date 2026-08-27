@@ -121,3 +121,96 @@ def test_extract_macros_ignores_non_matching_number_type():
         )
 
     assert macros["kcal"] == 0.0
+
+
+# --- kcal fallback chain (Foundation Foods that omit nutrient number "208") ---
+
+# Real /food/2346401-shaped response (potatoes, Foundation): energy is reported only
+# via Atwater General/Specific Factors (ids 2047/2048), never "208".
+POTATO_FOOD_NUTRIENTS = [
+    {"nutrient": {"id": 1003, "number": "203", "name": "Protein"}, "amount": 2.05},
+    {"nutrient": {"id": 1004, "number": "204", "name": "Total lipid (fat)"}, "amount": 0.1},
+    {"nutrient": {"id": 1005, "number": "205", "name": "Carbohydrate, by difference"}, "amount": 17.5},
+    {"nutrient": {"id": 2047, "number": "957", "name": "Energy (Atwater General Factors)"}, "amount": 79.0},
+    {"nutrient": {"id": 2048, "number": "958", "name": "Energy (Atwater Specific Factors)"}, "amount": 77.0},
+]
+
+
+def test_extract_macros_falls_back_to_atwater_general_factors_when_208_absent():
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        macros = usda_nutrients.extract_macros(POTATO_FOOD_NUTRIENTS)
+
+    assert macros["kcal"] == 79.0
+    assert not caught  # no warning at all: 203/204/205 present, kcal resolved via fallback
+
+
+def test_extract_macros_falls_back_to_atwater_specific_factors_when_general_absent():
+    food_nutrients = [
+        entry for entry in POTATO_FOOD_NUTRIENTS if entry["nutrient"]["number"] != usda_nutrients.ATWATER_GENERAL_NUM
+    ]
+
+    macros = usda_nutrients.extract_macros(food_nutrients)
+
+    assert macros["kcal"] == 77.0
+
+
+def test_extract_macros_falls_back_to_nutrient_id_1008_when_number_208_absent():
+    """Some responses key the same Energy (kcal) nutrient by id 1008 without a "number" field."""
+    food_nutrients = [
+        {"nutrient": {"id": 1008, "name": "Energy"}, "amount": 65.0},
+        {"nutrient": {"id": 1003, "number": "203", "name": "Protein"}, "amount": 1.61},
+    ]
+
+    macros = usda_nutrients.extract_macros(food_nutrients)
+
+    assert macros["kcal"] == 65.0
+
+
+def test_extract_macros_falls_back_to_kj_divided_by_4_184_when_no_kcal_field_present():
+    food_nutrients = [
+        {"nutrient": {"id": 1062, "number": "268", "name": "Energy", "unitName": "kJ"}, "amount": 418.4},
+        {"nutrient": {"id": 1003, "number": "203", "name": "Protein"}, "amount": 1.61},
+    ]
+
+    macros = usda_nutrients.extract_macros(food_nutrients)
+
+    assert macros["kcal"] == pytest.approx(100.0)
+
+
+def test_extract_macros_prefers_208_over_atwater_fallbacks_when_both_present():
+    food_nutrients = CHICKEN_GRAVY_FOOD_NUTRIENTS + [
+        {"nutrient": {"id": 2047, "number": "957", "name": "Energy (Atwater General Factors)"}, "amount": 999.0},
+    ]
+
+    macros = usda_nutrients.extract_macros(food_nutrients)
+
+    assert macros["kcal"] == 65.0  # the "208" value, not the 957 one
+
+
+def test_extract_macros_estimates_kcal_via_atwater_formula_when_no_energy_field_at_all():
+    """No 208/1008/2047/2048/268 field anywhere -- estimate from the macros we do have."""
+    food_nutrients = [
+        {"nutrient": {"id": 1003, "number": "203", "name": "Protein"}, "amount": 10.0},
+        {"nutrient": {"id": 1004, "number": "204", "name": "Total lipid (fat)"}, "amount": 5.0},
+        {"nutrient": {"id": 1005, "number": "205", "name": "Carbohydrate, by difference"}, "amount": 20.0},
+    ]
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        macros = usda_nutrients.extract_macros(food_nutrients)
+
+    assert macros["kcal"] == 4 * 10.0 + 9 * 5.0 + 4 * 20.0
+    assert not caught  # Atwater estimate counts as resolved, no warning
+
+
+def test_extract_macros_warns_once_when_no_energy_source_or_macros_available():
+    """Nothing to compute kcal from at all (not even a partial macro) -- 0.0 with one warning."""
+    food_nutrients = [
+        {"nutrient": {"id": 1093, "number": "307", "name": "Sodium, Na"}, "amount": 100.0},
+    ]
+
+    with pytest.warns(UserWarning, match="energy .kcal. unavailable"):
+        macros = usda_nutrients.extract_macros(food_nutrients)
+
+    assert macros["kcal"] == 0.0

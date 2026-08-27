@@ -201,3 +201,42 @@ def test_get_nutrition_backfills_a_row_cached_before_a_macro_field_existed(monke
     assert len(calls) == 1  # backfilled live, not trusted as cached
     assert result.food == EXPECTED_FOOD
     assert usda_cache.get_cached_nutrition("534358") == {"found": True, "food": EXPECTED_FOOD}
+
+
+def test_get_nutrition_refetches_a_cached_zero_kcal_row_when_other_macros_are_nonzero(monkeypatch):
+    """A row cached by the old extract_macros (only read nutrient "208") has kcal == 0.0
+    for a food that actually has energy, just reported under a field it didn't know about
+    yet. Non-zero protein/fat/carbs alongside kcal == 0.0 is the tell -- refetch live once
+    so the cache self-heals instead of quietly keeping the wrong 0."""
+    calls = []
+    monkeypatch.setattr(usda_client.requests, "get", make_fake_get(FOOD_DETAIL_EXAMPLE, calls))
+    stale_food = {
+        "fdc_id": 534358,
+        "description": "NUT 'N BERRY MIX",
+        "macros_per_100g": {"kcal": 0.0, "protein_g": 1.61, "fat_g": 4.03, "carbs_g": 4.84},
+    }
+    usda_cache.set_cached_nutrition_found("534358", stale_food)
+
+    result = usda_client.get_nutrition("534358", "FAKE_KEY")
+
+    assert len(calls) == 1  # refetched live, not trusted as cached
+    assert result.food == EXPECTED_FOOD
+    assert usda_cache.get_cached_nutrition("534358") == {"found": True, "food": EXPECTED_FOOD}
+
+
+def test_get_nutrition_trusts_a_cached_row_with_genuinely_zero_kcal_and_zero_other_macros(monkeypatch):
+    """A food with kcal == 0.0 AND all other macros == 0.0 (e.g. water) is plausibly
+    correct, not stale -- must not trigger a refetch."""
+    calls = []
+    monkeypatch.setattr(usda_client.requests, "get", make_fake_get(FOOD_DETAIL_EXAMPLE, calls))
+    water_food = {
+        "fdc_id": 999,
+        "description": "Water",
+        "macros_per_100g": {"kcal": 0.0, "protein_g": 0.0, "fat_g": 0.0, "carbs_g": 0.0},
+    }
+    usda_cache.set_cached_nutrition_found("999", water_food)
+
+    result = usda_client.get_nutrition("999", "FAKE_KEY")
+
+    assert len(calls) == 0
+    assert result.food == water_food
