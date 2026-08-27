@@ -52,6 +52,8 @@ GOOGLE_FONTS_URL = (
 # (e.g. "high") from clipping against the kcal line below.
 DAY_CARD_HEIGHT = "152px"
 DAY_CARD_HEIGHT_COLLAPSED = "52px"
+# Sidebar width as a fraction of the viewport (not Streamlit's default 300px).
+SIDEBAR_VIEWPORT_FRACTION = 1 / 4
 
 
 def pref_tag_css(tab: str) -> str:
@@ -93,6 +95,8 @@ def build_global_css() -> str:
         --ink: {c['ink']};       --ink-2: {c['ink_2']};  --ink-3: {c['ink_3']};
         --line: {c['line']};     --line-soft: {c['line_soft']};
         --accent: {c['accent']}; --accent-deep: {c['accent_deep']};
+        --am-sidebar-ratio: {SIDEBAR_VIEWPORT_FRACTION};
+        --am-sidebar-w: calc(100vw * var(--am-sidebar-ratio));
     }}
 
     html, body, .stApp, [data-testid="stAppViewContainer"], section[data-testid="stSidebar"],
@@ -102,15 +106,88 @@ def build_global_css() -> str:
 
     body, .stApp {{ background-color: var(--paper); color: var(--ink); }}
 
-    /* No horizontal scroll: clip anything that spills past the viewport. */
+    /* No horizontal scroll; main column must grow when sidebar slides away.
+       Streamlit 1.62 centers stMain children, which leaves dead paper on the
+       left after collapse unless we stretch the column and flex the wrapper. */
     html, body {{
         overflow-x: hidden;
         max-width: 100%;
     }}
-    .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"],
-    [data-testid="stSidebarContent"], section[data-testid="stSidebar"] {{
-        overflow-x: hidden;
+    .stApp {{
+        overflow-x: hidden !important;
+        max-width: 100% !important;
+    }}
+    [data-testid="stAppViewContainer"] {{
+        display: flex !important;
+        flex-direction: row !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }}
+    section[data-testid="stSidebar"] {{
+        flex: 0 0 auto !important;
+        overflow-x: hidden !important;
+    }}
+    section[data-testid="stSidebar"][aria-expanded="true"] {{
+        width: var(--am-sidebar-w) !important;
+        min-width: var(--am-sidebar-w) !important;
+        max-width: var(--am-sidebar-w) !important;
+        flex: 0 0 var(--am-sidebar-w) !important;
+    }}
+    /* Streamlit's drag handle fights viewport-based width — disable it. */
+    section[data-testid="stSidebar"] [style*="cursor: col-resize"],
+    section[data-testid="stSidebar"] [style*="cursor:col-resize"] {{
+        display: none !important;
+        pointer-events: none !important;
+    }}
+    /* Collapsed: Resizable keeps inline pixel width on the section, which beats
+       Streamlit's max-width:0 and reserves sidebar space. Zero it explicitly. */
+    section[data-testid="stSidebar"][aria-expanded="false"] {{
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+        flex: 0 0 0 !important;
+        overflow: hidden !important;
+        border: none !important;
+    }}
+    [data-testid="stAppViewContainer"] > div:first-child:has(
+        section[data-testid="stSidebar"][aria-expanded="false"]
+    ) {{
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+        flex: 0 0 0 !important;
+        overflow: hidden !important;
+    }}
+    [data-testid="stAppViewContainer"]:has(
+        section[data-testid="stSidebar"][aria-expanded="false"]
+    ) > div:last-child {{
+        flex: 1 1 100% !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }}
+    /* Header + stMain stack (sibling of sidebar inside AppView). */
+    [data-testid="stAppViewContainer"] > div:last-child {{
+        flex: 1 1 0% !important;
+        min-width: 0 !important;
+        width: auto !important;
+        max-width: 100% !important;
+        transition: flex-basis 300ms ease, width 300ms ease, max-width 300ms ease;
+    }}
+    [data-testid="stMain"] {{
+        align-items: stretch !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow-x: hidden !important;
+    }}
+    [data-testid="stSidebarContent"] {{
+        overflow-x: hidden !important;
         max-width: 100%;
+    }}
+    .stApp:has([data-testid="stExpandSidebarButton"]) [data-testid="stMainBlockContainer"],
+    .stApp:has([data-testid="stExpandSidebarButton"]) .block-container {{
+        padding-left: calc(var(--s-6) + 40px);
     }}
     [data-testid="stHorizontalBlock"] {{
         max-width: 100%;
@@ -154,11 +231,17 @@ def build_global_css() -> str:
     .am-meal-kcal, .am-day-burn, .am-sum-foot b {{ font-variant-numeric: tabular-nums; }}
 
     /* ---------- shell ----------------------------------------------------- */
-    .block-container, .stMainBlockContainer {{
+    .block-container, .stMainBlockContainer, [data-testid="stMainBlockContainer"] {{
         padding: 0 var(--s-6) var(--s-6);
-        max-width: min(1440px, 100%);
-        width: 100%;
+        max-width: 100% !important;
+        width: 100% !important;
         box-sizing: border-box;
+        align-self: stretch !important;
+    }}
+    [data-testid="stMain"] > [data-testid="stMainBlockContainer"],
+    [data-testid="stMain"] > .block-container {{
+        max-width: 100% !important;
+        width: 100% !important;
     }}
     /* Tight inside a section; the section headings carry the space *between*
        sections through their own top margin, so grouping is unambiguous. */
@@ -169,6 +252,15 @@ def build_global_css() -> str:
        the masthead, and the same again in the sidebar. */
     [data-testid="stElementContainer"]:has(style),
     [data-testid="stElementContainer"]:has(link) {{ display: none !important; }}
+    div.st-key-layout_sync,
+    [data-testid="stLayoutWrapper"]:has(> div.st-key-layout_sync) {{
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+    }}
 
     /* The header is flattened for density, so it must not swallow clicks meant
        for the page beneath it -- only its own controls stay interactive. */
@@ -216,10 +308,7 @@ def build_global_css() -> str:
         border-color: var(--accent) !important; background: {c['accent_soft']} !important;
     }}
 
-    /* Deliberately no width override. Streamlit drives the sidebar's width,
-       min-width and max-width from inline styles to run its collapse; an author
-       `width: !important` loses to those and strands the panel at 1px with no
-       way to reopen it. Colour it, leave its geometry alone. */
+    /* Expanded width is capped via --am-sidebar-w; collapsed width is zeroed above. */
     section[data-testid="stSidebar"] {{
         background: {c['paper_2']};
         border-right: 1px solid var(--line);
