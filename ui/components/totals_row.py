@@ -83,9 +83,18 @@ def render_plan_summary(
         )
 
     for guardrail in plan.get("guardrails", []):
-        if guardrail.get("status") == "warn":
+        status = guardrail.get("status")
+        message = guardrail.get("message", "")
+        if status == "warn":
             st.markdown(
-                f'<div class="am-note">'
-                f'<span>{humanize(guardrail.get("message", ""))}</span></div>',
+                f'<div class="am-note"><span>{humanize(message)}</span></div>',
+                unsafe_allow_html=True,
+            )
+        elif status == "info":
+            # Non-alarming, distinct from "warn" -- already plain language from
+            # the pipeline (see core.agent.plan_view's `adjusted` guardrail), so
+            # no humanize() pass needed.
+            st.markdown(
+                f'<div class="am-note am-note-info"><span>{message}</span></div>',
                 unsafe_allow_html=True,
             )

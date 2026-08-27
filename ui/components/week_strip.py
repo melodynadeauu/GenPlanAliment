@@ -16,6 +16,16 @@ _FULL_DAY = {
     "sunday": "Sunday",
 }
 
+# The one icon kept after the icons.py sweep: a plain drawn chevron for the
+# training week's expand/collapse toggle, not an emoji or a pictogram.
+_CHEVRON = (
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" '
+    'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" '
+    'stroke-linejoin="round" aria-hidden="true"><path d="{path}"/></svg>'
+)
+_CHEVRON_UP = _CHEVRON.format(path="M6 15l6-6 6 6")
+_CHEVRON_DOWN = _CHEVRON.format(path="M6 9l6 6 6-6")
+
 
 def _on_day_click(day_name: str) -> None:
     """Select a day on click (callback, so the first click already lands)."""
@@ -55,7 +65,7 @@ def render_week_strip(week: list[dict], profile: Profile, disabled: bool = False
             that cancels the in-flight generation.
     """
     expanded = st.session_state.get(KEY_WEEK_EXPANDED, False)
-    toggle_label = "Hide" if expanded else "Show"
+    toggle_glyph = _CHEVRON_UP if expanded else _CHEVRON_DOWN
 
     with st.container(key="week_strip_header"):
         label_col, toggle_col = st.columns([11, 1], vertical_alignment="center")
@@ -68,7 +78,7 @@ def render_week_strip(week: list[dict], profile: Profile, disabled: bool = False
         with toggle_col:
             with st.container(key="week_expand_toggle"):
                 st.markdown(
-                    f'<div class="am-week-toggle-label">{toggle_label}</div>',
+                    f'<div class="am-week-toggle-icon">{toggle_glyph}</div>',
                     unsafe_allow_html=True,
                 )
                 st.button(

@@ -40,9 +40,19 @@ DEMO_PLAN = {
             ],
         },
     ],
+    # The warn and info entries use the exact wording core.agent.plan_view produces
+    # for a degraded plan and an auto-adjusted one, so the demo banner looks like
+    # the real thing. The pipeline never emits both at once for a single plan (see
+    # plan_view.build_plan_view) -- both are included here purely to showcase each
+    # guardrail state in one screenshot.
     "guardrails": [
         {"status": "ok", "message": "Calorie target within safe limits"},
         {"status": "ok", "message": "No disliked foods in this plan"},
-        {"status": "warn", "message": "Quinoa uses estimated nutrition. USDA data was unavailable for this item."},
+        {
+            "status": "warn",
+            "message": "Plan non-compliant after 2 attempts: Quinoa, cooked could "
+            "not be found in USDA and are shown as estimated.",
+        },
+        {"status": "info", "message": "Portions adjusted automatically to meet the calorie target."},
     ],
 }

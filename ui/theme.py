@@ -436,19 +436,18 @@ def build_global_css() -> str:
     }}
     div.st-key-week_expand_toggle {{
         position: relative;
-        width: fit-content;
+        width: 26px;
         height: 26px;
         margin-left: auto;
     }}
-    .am-week-toggle-label {{
+    .am-week-toggle-icon {{
         display: flex; align-items: center; justify-content: center;
-        height: 26px; padding: 0 var(--s-2);
+        width: 26px; height: 26px; padding: 0;
         background: var(--surface); border: 1px solid var(--line);
         border-radius: var(--r-sm); color: var(--ink-2);
-        font-size: var(--t-xs); font-weight: 600; white-space: nowrap;
         transition: border-color .16s ease, background .16s ease, color .16s ease;
     }}
-    div.st-key-week_expand_toggle:hover .am-week-toggle-label {{
+    div.st-key-week_expand_toggle:hover .am-week-toggle-icon {{
         border-color: var(--accent); background: {c['accent_soft']}; color: {c['accent_deep']};
     }}
     div.st-key-week_expand_toggle > [data-testid="stElementContainer"]:has(.stButton) {{
@@ -456,12 +455,12 @@ def build_global_css() -> str:
     }}
     div.st-key-week_expand_toggle .stButton {{ height: 100%; margin: 0; padding: 0; }}
     div.st-key-week_expand_toggle .stButton > button {{
-        width: 100%; height: 26px; min-height: 26px;
+        width: 26px; height: 26px; min-height: 26px;
         opacity: 0; padding: 0 !important; margin: 0 !important;
         border: none !important; box-shadow: none !important;
         cursor: pointer;
     }}
-    div.st-key-week_expand_toggle:has(button:focus-visible) .am-week-toggle-label {{
+    div.st-key-week_expand_toggle:has(button:focus-visible) .am-week-toggle-icon {{
         outline: 2px solid var(--accent); outline-offset: 2px;
     }}
     .am-rule {{ height: 1px; background: var(--line); margin: var(--s-4) 0; }}
@@ -725,6 +724,10 @@ def build_global_css() -> str:
         font-size: var(--t-sm); color: {c['ochre']}; margin-top: var(--s-3);
     }}
     .am-note b {{ font-weight: 600; }}
+    /* Auto-adjusted portions, not a problem -- calmer than the warn ochre above. */
+    .am-note-info {{
+        border-color: var(--accent); background: {c['accent_soft']}; color: {c['accent_deep']};
+    }}
     .am-foot {{
         border-top: 1px solid var(--line); margin-top: var(--s-7); padding-top: var(--s-4);
         display: flex; gap: var(--s-6); flex-wrap: wrap;
