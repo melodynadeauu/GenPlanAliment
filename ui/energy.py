@@ -1,11 +1,6 @@
-"""The calorie pipeline, previewed for the UI before any LLM call.
-
-core.agent.plan_generator runs exactly this arithmetic before prompting the model
-(BMR -> sedentary base -> + exercise -> TDEE -> goal adjustment). Re-running the
-same pure functions here lets the page show *where the target comes from* the
-moment a day is selected, instead of a number that only appears after generation.
-
-Read-only and side-effect free -- no LLM, no network.
+"""The calorie pipeline, previewed for the UI before any LLM call: the same
+pure functions core.agent.plan_generator runs, so the target shows the moment
+a day is selected. Read-only, no LLM, no network.
 """
 from core.models import ActivityEntry, Profile
 from core.nutrition import (
@@ -25,11 +20,8 @@ GOAL_LABEL = {
 
 
 def load_day_activities(day: str, week: list[dict]) -> list[dict]:
-    """Activity rows for `day`: the database first, `week` as the fallback.
-
-    The fallback keeps the demo honest when meal_prep.db has not been seeded --
-    without it the page shows "no activity" for every day and the whole
-    activity-drives-the-plan premise disappears from the screen.
+    """Activity rows for `day`: the database first, `week` as the fallback
+    (keeps the demo working when meal_prep.db hasn't been seeded).
     """
     try:
         rows = activity_store.get_activities(day)

@@ -25,19 +25,15 @@ def test_get_llm_disables_the_sdks_own_retries():
 
 
 def test_classify_exception_returns_rate_limited_for_a_langchain_model_rate_limit_error():
-    """This is what ChatGoogleGenerativeAI actually raises for a real 429: its own
-    GoogleRateLimitError, a langchain_core.exceptions.ModelRateLimitError -- NOT a
-    genai_errors.ClientError subclass. Verified live against langchain-google-genai
-    4.3.5."""
+    """What ChatGoogleGenerativeAI actually raises for a real 429 (verified
+    live against langchain-google-genai 4.3.5)."""
     exc = ModelRateLimitError("quota exceeded")
 
     assert gemini.classify_exception(exc) == "rate_limited"
 
 
 def test_classify_exception_returns_rate_limited_for_a_429_client_error():
-    """Fallback branch: exercised only by a raw genai_errors.ClientError that bypasses
-    the ChatGoogleGenerativeAI layer -- the real chat model wraps this into
-    ModelRateLimitError instead, covered above."""
+    """Fallback branch: a raw ClientError bypassing the ChatGoogleGenerativeAI layer."""
     exc = genai_errors.ClientError(code=429, response_json={"error": {"message": "quota"}})
 
     assert gemini.classify_exception(exc) == "rate_limited"

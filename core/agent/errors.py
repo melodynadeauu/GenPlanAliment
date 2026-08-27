@@ -1,7 +1,5 @@
-"""Canonical exceptions a provider adapter (core.agent.providers.*) raises to report an
-unrecoverable failure for one LLM call -- core.agent.graph catches these instead of
-any provider SDK's own exception types, so the loop itself never imports google-generativeai
-or groq.
+"""Canonical exceptions a provider adapter raises for one LLM call failure.
+core.agent.graph catches these instead of any provider SDK's own types.
 """
 
 

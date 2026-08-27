@@ -20,8 +20,7 @@ def render_profile_section(disabled: bool = False) -> None:
     across reruns -- see ui.adapters.profile_from_dict for reading them back.
 
     Args:
-        disabled: True while a plan is generating -- the fields are disabled so an
-            edit can't fire a rerun that cancels the in-flight generation.
+        disabled: disable the fields.
     """
     col1, col2 = st.columns(2)
 

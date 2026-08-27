@@ -10,8 +10,7 @@ def _meal_card_html(meal: dict) -> str:
     for item in meal.get("items", []):
         warn = item.get("source_status") != "ok"
         source = item.get("source", "")
-        # A failed USDA lookup is the one source detail worth reading; a healthy
-        # FDC id stays quiet at the edge of the row.
+        # Only a failed lookup needs the source shown; a healthy FDC id stays quiet.
         source_html = (
             '<span class="am-src am-src-warn">estimated</span>'
             if warn

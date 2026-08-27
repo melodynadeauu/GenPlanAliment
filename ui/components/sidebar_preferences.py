@@ -27,17 +27,10 @@ def _mounted_key(tab: str) -> str:
 
 
 def _on_items_changed(tab: str, likes: list[str], dislikes: list[str]) -> None:
-    """Validate then persist the edited list -- only ever called by an actual user edit.
+    """Validate then persist the edited list; only called by an actual user edit.
 
-    Saving from a plain `selected != active_items` comparison instead would fire on
-    any run where the widget's own state and the JSON file disagree (a keyed
-    multiselect keeps its state and ignores `default` after the first render), and
-    silently write the stale widget list back over the file.
-
-    A newly added term USDA doesn't recognise blocks the save (the chip stays on
-    screen, unsaved, so the user can correct it), as does a like/dislike overlap
-    rejected by the store. Either way the reason goes to _ERROR_KEY for
-    render_preferences_section to display, since a callback cannot render.
+    An unknown food or a like/dislike overlap blocks the save, and the reason
+    goes to _ERROR_KEY (a callback can't render directly).
     """
     selected = list(st.session_state[_widget_key(tab)])
     previous = likes if tab == "likes" else dislikes
@@ -67,14 +60,10 @@ def _on_items_changed(tab: str, likes: list[str], dislikes: list[str]) -> None:
 def render_preferences_section(disabled: bool = False) -> None:
     """Render the segmented tab + editable chip list (add/remove) for the active tab.
 
-    Reads preferences fresh from the JSON file on every run and saves an edit back
-    immediately -- so the next plan generation (core.agent.plan_generator, which also
-    reads the JSON file) picks it up.
+    Reads preferences fresh from the JSON file each run; an edit saves immediately.
 
     Args:
-        disabled: True while a plan is generating -- the tab buttons and the chip
-            editor are disabled so an edit can't fire a rerun that cancels the
-            in-flight generation.
+        disabled: disable the tab buttons and the chip editor.
 
     Reads/writes session_state:
         - KEY_ACTIVE_PREF_TAB: "likes" or "dislikes"
@@ -114,16 +103,10 @@ def render_preferences_section(disabled: bool = False) -> None:
 
     st.markdown(f"<style>{pref_tag_css(active_tab)}</style>", unsafe_allow_html=True)
 
-    # Re-seed the widget on every *mount*, not just the first one.
-    #
-    # Only one of the two multiselects is on screen at a time. Switching tabs
-    # unmounts the other, and Streamlit resets an unmounted widget to its
-    # default -- which for a multiselect given its value through session_state
-    # is the empty list. The key therefore survives the round trip, but empty:
-    # a `key not in st.session_state` guard sees it and leaves it alone, the
-    # user sees no chips, and the next edit writes that empty list over the
-    # stored preferences. Tracking mount state instead makes coming back to a
-    # tab reload it from the file, so on_change only ever carries a real edit.
+    # Re-seed on every *mount*: switching tabs unmounts the other multiselect,
+    # and Streamlit resets it to an empty default. A `key not in session_state`
+    # guard would miss that (the key still exists, now empty), so track mount
+    # state instead and reload from the file each time a tab is remounted.
     key = _widget_key(active_tab)
     other_tab = "dislikes" if active_tab == "likes" else "likes"
     if not st.session_state.get(_mounted_key(active_tab)):
@@ -143,9 +126,8 @@ def render_preferences_section(disabled: bool = False) -> None:
         disabled=disabled,
     )
 
-    # Surfaced here, not in the callback: st.error inside an on_change callback
-    # renders nothing -- the callback runs before the script reruns, so the
-    # message has to travel through session_state to reach this point.
+    # st.error in an on_change callback renders nothing; the message travels
+    # through session_state instead.
     error = st.session_state.get(_ERROR_KEY)
     if error:
         st.error(error)

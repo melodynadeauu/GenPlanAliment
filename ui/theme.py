@@ -1,13 +1,10 @@
-"""Design tokens and the global stylesheet for the app.
+"""Design tokens and the global stylesheet for the app: warm paper, forest ink,
+serif numerals for key figures, mono for measured data. Every colour, space,
+size and radius used by ui/components lives here as CSS custom properties.
 
-Aesthetic: a nutrition dossier -- warm paper, forest ink, serif numerals for the
-figures that matter and a mono face reserved for measured data (kcal, grams,
-FDC ids). Every colour, space, size and radius used by ui/components lives here,
-emitted once as CSS custom properties so components never invent a value.
-
-Two scales, and nothing off them:
+Two scales:
     space  --s-1 .. --s-8   4px base, doubling loosely
-    type   --t-micro .. --t-2xl   fixed px, ~1.15 ratio (product UI, not fluid)
+    type   --t-micro .. --t-2xl   fixed px, ~1.15 ratio
 """
 
 COLORS = {
@@ -43,13 +40,9 @@ GOOGLE_FONTS_URL = (
     "family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&display=swap"
 )
 
-# Fixed height for a day card. Two reasons it is pinned rather than intrinsic:
-# Streamlit sizes its own element containers from a stale measurement (so an
-# intrinsic card renders its last line outside its own border), and the seven
-# cards have to share a height for the row to read as a row. Sized for the worst
-# case -- a two-line activity name over a two-line duration/intensity meta, which
-# is what the narrowest supported window produces. Extra px keeps descenders
-# (e.g. "high") from clipping against the kcal line below.
+# Fixed height for a day card: Streamlit sizes containers from a stale
+# measurement (an intrinsic card clips its last line), and all seven cards
+# need to match. Sized for the worst case: a two-line name over a two-line meta.
 DAY_CARD_HEIGHT = "152px"
 DAY_CARD_HEIGHT_COLLAPSED = "52px"
 # Sidebar width as a fraction of the viewport (not Streamlit's default 300px).
@@ -724,7 +717,7 @@ def build_global_css() -> str:
         font-size: var(--t-sm); color: {c['ochre']}; margin-top: var(--s-3);
     }}
     .am-note b {{ font-weight: 600; }}
-    /* Auto-adjusted portions, not a problem -- calmer than the warn ochre above. */
+    /* Calmer, non-alarming variant of .am-note above. */
     .am-note-info {{
         border-color: var(--accent); background: {c['accent_soft']}; color: {c['accent_deep']};
     }}

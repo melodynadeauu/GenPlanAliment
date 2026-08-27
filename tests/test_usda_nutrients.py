@@ -6,8 +6,6 @@ import pytest
 from data.usda import nutrients as usda_nutrients
 
 # Real /food/2620254 response (CHICKEN GRAVY, CHICKEN, Branded), foodNutrients only.
-# Each entry nests the nutrient number as a string under "nutrient", with "amount"
-# as a sibling key -- the real FDC API shape, not a flattened mock.
 CHICKEN_GRAVY_FOOD_NUTRIENTS = [
     {
         "type": "FoodNutrient",
@@ -125,8 +123,7 @@ def test_extract_macros_ignores_non_matching_number_type():
 
 # --- kcal fallback chain (Foundation Foods that omit nutrient number "208") ---
 
-# Real /food/2346401-shaped response (potatoes, Foundation): energy is reported only
-# via Atwater General/Specific Factors (ids 2047/2048), never "208".
+# Real /food/2346401-shaped response (potatoes): energy only via Atwater factors.
 POTATO_FOOD_NUTRIENTS = [
     {"nutrient": {"id": 1003, "number": "203", "name": "Protein"}, "amount": 2.05},
     {"nutrient": {"id": 1004, "number": "204", "name": "Total lipid (fat)"}, "amount": 0.1},

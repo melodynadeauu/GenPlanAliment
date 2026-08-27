@@ -1,10 +1,8 @@
-"""Tests for core.agent.plan_view: turning a flat PlanPropose into the meals-grouped,
-kcal-enriched dict ui.components.meal_plan / totals_row / guardrails_bar expect
-(see fixtures.demo_plan.DEMO_PLAN for the target shape).
+"""Tests for core.agent.plan_view: turning a flat PlanPropose into the
+meals-grouped, kcal-enriched dict ui.components expect.
 
-get_nutrition_tool is monkeypatched on the plan_view module itself (not on
-core.tools.usda_tool, where it's defined) -- same pattern as llm_adapter.agent_graph.build_graph
-in test_llm_adapter.py: patch the name where it's looked up, not where it's declared.
+get_nutrition_tool is monkeypatched on the plan_view module itself, not on
+core.tools.usda_tool where it's defined: patch the name where it's looked up.
 """
 from core.agent import plan_generator, plan_view
 from core.agent.llm_adapter import GenerationResult
@@ -14,9 +12,8 @@ from core.types import Goal, MealType
 
 
 class _FakeNutritionTool:
-    """Stands in for the StructuredTool get_nutrition_tool becomes after core.tools.usda_tool
-    adds @tool (see tests/test_usda_tool.py) -- plan_view.py now calls
-    get_nutrition_tool.invoke({"fdc_id": ...}), not get_nutrition_tool(fdc_id) directly."""
+    """Stands in for the StructuredTool get_nutrition_tool; plan_view calls
+    .invoke({"fdc_id": ...}), not the function directly."""
 
     def __init__(self, fn):
         self._fn = fn

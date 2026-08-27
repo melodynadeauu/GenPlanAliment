@@ -1,15 +1,12 @@
 """What the preferences sidebar is allowed to write to food_preferences.json.
 
-Each tab saves its own list and leaves the other one alone, and an empty list
-reaches the file only when the user actually cleared every chip.
+Each tab saves its own list; an empty list only reaches the file when the
+user actually cleared every chip.
 
-These do NOT cover the bug that motivated them: switching tabs unmounts one of
-the two multiselects, and a real browser resets an unmounted widget to its
-default (the empty list) while leaving its key in session_state -- so the old
-`if key not in st.session_state` seed found the key, left it empty, showed no
-chips, and let the next edit write that empty list over the file. AppTest keeps
-widget state across the same round trip and never reproduces it; these tests
-pass against the broken version too. The fix was verified in the browser.
+These do NOT reproduce the bug that motivated them (a real browser resets an
+unmounted multiselect to empty, which used to overwrite the file) -- AppTest
+keeps widget state across a round trip in a way a browser doesn't. The fix
+was verified in the browser, not here.
 """
 
 import json

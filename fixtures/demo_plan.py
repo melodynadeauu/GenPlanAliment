@@ -40,11 +40,8 @@ DEMO_PLAN = {
             ],
         },
     ],
-    # The warn and info entries use the exact wording core.agent.plan_view produces
-    # for a degraded plan and an auto-adjusted one, so the demo banner looks like
-    # the real thing. The pipeline never emits both at once for a single plan (see
-    # plan_view.build_plan_view) -- both are included here purely to showcase each
-    # guardrail state in one screenshot.
+    # warn + info shown together only for demo purposes -- the real pipeline
+    # never emits both for one plan (see plan_view.build_plan_view).
     "guardrails": [
         {"status": "ok", "message": "Calorie target within safe limits"},
         {"status": "ok", "message": "No disliked foods in this plan"},

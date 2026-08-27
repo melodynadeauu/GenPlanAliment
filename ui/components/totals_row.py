@@ -31,10 +31,8 @@ def render_plan_summary(
     plan_day_label: str | None = None,
     selected_day_label: str | None = None,
 ) -> None:
-    """Render planned-vs-target with a meter, or nothing when there is no plan.
-
-    The empty case belongs to the meal plan's empty state, which explains the
-    pipeline -- two "nothing here yet" boxes stacked would just be noise.
+    """Render planned-vs-target with a meter, or nothing when there is no plan
+    (the meal plan's empty state handles that message).
     """
     if plan is None:
         return
@@ -91,9 +89,7 @@ def render_plan_summary(
                 unsafe_allow_html=True,
             )
         elif status == "info":
-            # Non-alarming, distinct from "warn" -- already plain language from
-            # the pipeline (see core.agent.plan_view's `adjusted` guardrail), so
-            # no humanize() pass needed.
+            # Already plain language -- no humanize() rewrite needed.
             st.markdown(
                 f'<div class="am-note am-note-info"><span>{message}</span></div>',
                 unsafe_allow_html=True,

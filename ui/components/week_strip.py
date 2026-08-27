@@ -1,6 +1,5 @@
-"""The training week: seven day cards, each showing the day's activity and what
-it burns. This is the row that makes the product legible at a glance -- the plan
-follows the training, so the training has to be on screen.
+"""The training week: seven day cards, each showing the day's activity and
+what it burns.
 """
 
 import streamlit as st
@@ -16,8 +15,6 @@ _FULL_DAY = {
     "sunday": "Sunday",
 }
 
-# The one icon kept after the icons.py sweep: a plain drawn chevron for the
-# training week's expand/collapse toggle, not an emoji or a pictogram.
 _CHEVRON = (
     '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" '
     'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" '
@@ -60,9 +57,7 @@ def render_week_strip(week: list[dict], profile: Profile, disabled: bool = False
     Args:
         week: fixtures.demo_week.DEMO_WEEK rows (fallback when the DB is empty).
         profile: used only to price each day's activity in kcal.
-        disabled: True while a plan is generating -- the day buttons and the
-            expand/collapse toggle are disabled so a click can't fire a rerun
-            that cancels the in-flight generation.
+        disabled: disable the day buttons and the expand/collapse toggle.
     """
     expanded = st.session_state.get(KEY_WEEK_EXPANDED, False)
     toggle_glyph = _CHEVRON_UP if expanded else _CHEVRON_DOWN
@@ -95,10 +90,7 @@ def render_week_strip(week: list[dict], profile: Profile, disabled: bool = False
         burn = round(exercise_kcal(rows, profile.weight_kg))
 
         if rows:
-            # A day can hold several sessions. The kcal below sums all of them,
-            # so naming only the first one leaves a total that does not add up
-            # to anything on screen -- say how many there are instead, and let
-            # the energy chain name them.
+            # Multiple sessions: show a count instead of just the first activity.
             lead = max(rows, key=lambda row: exercise_kcal([row], profile.weight_kg))
             if len(rows) == 1:
                 short = display_for(lead["activity"])
@@ -127,9 +119,7 @@ def render_week_strip(week: list[dict], profile: Profile, disabled: bool = False
                     ),
                     unsafe_allow_html=True,
                 )
-                # Every session, always -- a narrow window drops the detail
-                # from the visible meta line, and this is the only place it is
-                # otherwise available.
+                # Full detail here; a narrow window hides it from the meta line above.
                 if rows:
                     sessions = "; ".join(
                         f"{display_for(row['activity'])}, "

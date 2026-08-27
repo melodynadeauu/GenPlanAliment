@@ -7,8 +7,7 @@ def render_masthead(disabled: bool = False) -> tuple[bool, bool]:
     """Render the fixed masthead row.
 
     Args:
-        disabled: True while a plan is generating -- both buttons are disabled so a
-            click can't fire a rerun that cancels the in-flight generation.
+        disabled: disable both buttons.
 
     Returns:
         (generate_clicked, demo_clicked) -- demo reloads fixtures.demo_plan.DEMO_PLAN

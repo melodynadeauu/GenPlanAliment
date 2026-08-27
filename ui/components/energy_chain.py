@@ -1,9 +1,6 @@
-"""The calorie target, shown as the arithmetic that produced it.
-
-Every step here is computed by ui.energy from the same pure functions
-core.agent.plan_generator uses, so the chain is the real derivation and not a
-decorative restatement of it -- and it updates the moment a day or a profile
-field changes, before any plan exists.
+"""The calorie target, shown as the arithmetic that produced it: the same
+ui.energy functions core.agent.plan_generator uses, so it updates live,
+before any plan exists.
 """
 
 import streamlit as st
@@ -36,9 +33,7 @@ def render_energy_chain(profile: Profile, day_label: str, rows: list[dict]) -> f
     energy = compute_energy(profile, rows)
 
     if rows:
-        # The chain has the page's full width, so this is where every session
-        # that went into the burn gets named -- the day card only has room for
-        # how many there are.
+        # Full width here, so each session is named (the day card only shows a count).
         burn_sub = "".join(
             f'<span class="am-step-part">'
             f'{display_for(row["activity"])} · {row["duration_minutes"]} min</span>'

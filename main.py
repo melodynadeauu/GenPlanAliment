@@ -1,6 +1,5 @@
-"""Terminal prototype entry point: generate one day's meal plan for a hardcoded test
-profile and print the result. No CLI parsing beyond an optional day argument -- this is
-a milestone script, not the final interface.
+"""Terminal prototype: generate one day's meal plan for a hardcoded profile
+and print it.
 """
 import json
 import sys
@@ -9,8 +8,7 @@ from core.agent import plan_generator
 from core.models import Profile
 from core.types import Goal
 
-# Error codes GenerationResult.error can carry (see core/agent/llm_adapter.py), each
-# with a message a terminal user can act on.
+# Error codes GenerationResult.error can carry (see core/agent/llm_adapter.py).
 ERROR_MESSAGES = {
     "rate_limited": "The LLM provider rate-limited the request. Wait a bit and try again.",
     "timeout": "The LLM provider timed out (or errored transiently) and retries were exhausted.",
@@ -20,7 +18,7 @@ ERROR_MESSAGES = {
     "that failed PlanPropose validation), even after the forced final attempt.",
 }
 
-# Test-case profile for this prototype, hardcoded per the milestone spec.
+# Hardcoded test profile.
 TEST_PROFILE = Profile(
     age_years=45,
     weight_kg=100,

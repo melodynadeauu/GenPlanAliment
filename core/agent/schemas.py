@@ -22,9 +22,8 @@ class PlanFood(BaseModel):
     @field_validator("fdc_id", mode="before")
     @classmethod
     def _coerce_fdc_id_to_str(cls, value):
-        """Some models echo USDA's fdcId back as a bare int or float (171287.0)
-        instead of a string -- pydantic doesn't coerce that by default, so normalize
-        it here rather than rejecting an otherwise-valid plan.
+        """Some models return fdcId as an int/float instead of a string;
+        normalize instead of rejecting.
         """
         if isinstance(value, int):
             return str(value)

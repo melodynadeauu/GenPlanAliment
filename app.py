@@ -35,8 +35,7 @@ from ui.components.guardrails_bar import render_footer
 from fixtures.demo_plan import DEMO_PLAN
 from fixtures.demo_week import DEMO_WEEK
 
-# Error codes GenerationResult.error can carry (see core/agent/llm_adapter.py), each
-# with a message a UI user can act on. Mirrors main.py's ERROR_MESSAGES.
+# Error codes GenerationResult.error can carry; mirrors main.py's ERROR_MESSAGES.
 ERROR_MESSAGES = {
     "rate_limited": "Too many requests right now. Wait a bit and try again, or press "
     "Demo plan to show a ready-made one.",
@@ -65,9 +64,6 @@ def main() -> None:
     configure_page()
     init_state()
 
-    # Widgets that could fire a rerun mid-generation (and cancel the in-flight
-    # LLM call) are rendered disabled for as long as this flag is set. See the
-    # `is_generating` block below for the two-rerun sequence this drives.
     is_generating = st.session_state[KEY_IS_GENERATING]
 
     with st.sidebar:
@@ -91,11 +87,8 @@ def main() -> None:
         st.session_state[KEY_PLAN_DAY] = DEMO_PLAN.get("day", selected_day)
 
     if generate_clicked and not is_generating:
-        # Don't generate inline: the widgets above have already rendered enabled
-        # for this run, so disabling them now wouldn't reach the browser until
-        # after the (blocking) generation call finishes. Flip the flag, snapshot
-        # the day, and rerun -- the *next* run renders everything disabled
-        # before the actual generation starts.
+        # Rerun before generating: only then does the disabled state above
+        # reach the browser before the blocking call starts.
         st.session_state[KEY_IS_GENERATING] = True
         st.session_state[KEY_GENERATING_DAY] = selected_day
         st.rerun()
